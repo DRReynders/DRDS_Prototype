@@ -65,6 +65,21 @@ export interface LlmCallMeta {
 }
 
 export async function llmJson<T>(prompt: string, meta: LlmCallMeta): Promise<T> {
+  // One retry on malformed JSON only. Model formatting slips are transient and
+  // would otherwise kill an entire run at its final stages; genuine request
+  // failures still throw immediately. Both attempts are recorded and both pass
+  // through the budget guard.
+  try {
+    return await llmJsonOnce<T>(prompt, meta);
+  } catch (err) {
+    const parseSlip =
+      err instanceof SyntaxError || (err instanceof Error && err.message.startsWith("LLM did not return"));
+    if (!parseSlip) throw err;
+    return await llmJsonOnce<T>(prompt, meta);
+  }
+}
+
+async function llmJsonOnce<T>(prompt: string, meta: LlmCallMeta): Promise<T> {
   const p = getProvider();
   assertWithinBudget(); // soft limit, checked before each new call
   const t0 = performance.now();
