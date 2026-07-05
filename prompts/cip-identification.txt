@@ -1,0 +1,54 @@
+NOTE: This prompt is not part of the Sprint 1A Prompt Library v1 — in the paper
+exercises, Contract 1 (Client Identification) was performed by a human researcher.
+This is its first automated equivalent. It works only from genuinely fetched page
+content supplied below; it must never invent facts about the business.
+
+You are producing a Client Identification Packet (CIP) for the business behind the
+website content below. Everything you state must be directly supported by the
+supplied content. Do not use outside knowledge about this business; do not guess.
+
+Normalised Business Identifier: {{IDENTIFIER}}
+
+Fetched page content (the business's own website — the only source available in this run):
+{{PAGE_CONTENT}}
+
+Produce the CIP fields:
+1. Business Name — as the business itself states it.
+2. Business Type — exactly one of this fixed taxonomy: Financial Advisory, Legal,
+   Accounting, Consulting, Other Professional Service, Other.
+3. Primary Digital Asset — the website itself (the identifier above), unless the
+   content clearly indicates another asset is primary.
+4. Detected Digital Assets — other digital properties genuinely linked or named in
+   the fetched content (social profiles, directories). Only ones actually present.
+5. Location — as stated in the fetched content. If multiple or none, say so honestly.
+6. Observed Languages — languages actually observed in the content.
+7. Identification Confidence — High, Medium-High, Medium, or Low. Calibration rule
+   (v1.1): when the ONLY source is the business's own website — as in this run —
+   confidence must not exceed Medium-High, because internal consistency is not the
+   same as independent corroboration. Reserve High for identification confirmed by
+   at least one independent source. A clear, specific, self-consistent single-source
+   identification earns Medium-High; a vaguer one earns Medium or Low.
+8. Identity Conflicts — factual discrepancies WITHIN the fetched content (e.g., two
+   different addresses on different pages). Only genuinely observed conflicts. Note:
+   cross-source conflicts (directories, social platforms) are invisible to this run
+   unless those pages appear above.
+9. Notes — anything else identity-relevant that was genuinely observed.
+
+If the content does not support identifying one coherent business at all, say so —
+an honest inability to identify is more useful than a guessed CIP.
+
+--- OUTPUT FORMAT ---
+Respond with a single JSON object, no other text:
+{
+  "businessName": "...",
+  "businessType": "Financial Advisory" | "Legal" | "Accounting" | "Consulting" | "Other Professional Service" | "Other",
+  "primaryDigitalAsset": "...",
+  "detectedDigitalAssets": ["...", ...],
+  "location": "...",
+  "observedLanguages": ["...", ...],
+  "identificationConfidence": "High" | "Medium-High" | "Medium" | "Low",
+  "identityConflicts": [{"field": "...", "details": "..."}, ...],
+  "notes": "...",
+  "cannotIdentify": false | true,
+  "cannotIdentifyReason": "<only if cannotIdentify is true>"
+}

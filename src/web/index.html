@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DRDS — Growth Snapshot</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; line-height: 1.5; }
+  h1 { font-size: 1.6rem; }
+  form.inline { display: flex; gap: .5rem; margin: 1.5rem 0; }
+  input { padding: .6rem; font-size: 1rem; border: 1px solid #999; border-radius: 4px; }
+  input[type=url], input[type=email] { flex: 1; }
+  button { padding: .6rem 1.2rem; font-size: 1rem; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .6; }
+  .hidden { display: none; }
+  .spinner { display: inline-block; width: 1em; height: 1em; border: 2px solid #ccc; border-top-color: #333; border-radius: 50%; animation: spin 1s linear infinite; vertical-align: -2px; margin-right: .5em; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .card { border: 1px solid #ddd; border-radius: 6px; padding: 1rem; margin: 1rem 0; }
+  .card h2 { font-size: 1rem; margin: 0 0 .5rem; text-transform: uppercase; letter-spacing: .03em; color: #555; }
+  .notice { border: 1px solid #c90; background: #fff8e1; padding: 1rem; border-radius: 6px; margin: 1rem 0; }
+  .mock-banner { border: 3px solid #c00; background: #ffecec; color: #900; font-weight: bold; padding: 1rem; border-radius: 6px; margin: 1rem 0; text-align: center; }
+  .confidence { font-style: italic; color: #444; }
+  /* Waiting Room: milestones appear when the pipeline genuinely reaches them */
+  #milestones { list-style: none; padding: 0; margin: 1.5rem 0; }
+  #milestones li { padding: .35rem 0; color: #333; }
+  #milestones li.done::before { content: "✓ "; color: #2a7d2a; font-weight: bold; }
+  .save-box { border: 1px solid #bbb; background: #f8f8f8; border-radius: 6px; padding: 1rem; margin: 1.5rem 0; }
+  .save-box p { margin: 0 0 .6rem; }
+  .save-msg { margin-top: .6rem; font-size: .95rem; }
+</style>
+</head>
+<body>
+  <h1>DRDS Growth Audit</h1>
+  <p>Enter your business website and receive a Growth Snapshot — a short, specific
+  diagnosis of the single biggest thing currently limiting your growth, based on
+  genuine, publicly observable evidence.</p>
+
+  <form id="form" class="inline">
+    <input type="url" id="url" placeholder="https://your-business-website.co.za" required>
+    <button type="submit" id="go">Get my Growth Snapshot</button>
+  </form>
+
+  <!-- Waiting Room: each line appears when that pipeline stage actually starts. -->
+  <div id="waiting" class="hidden">
+    <p><span class="spinner"></span>Analysing your business — this usually takes a minute or two.</p>
+    <ul id="milestones"></ul>
+  </div>
+
+  <div id="notice" class="notice hidden"></div>
+
+  <div id="result" class="hidden">
+    <div id="mockBanner" class="mock-banner hidden">
+      MOCK OUTPUT — structural testing only. This is NOT a real analysis of your business.
+    </div>
+    <p id="bizName" style="font-weight:bold"></p>
+    <div class="card"><h2>Primary Constraint</h2><p id="primaryConstraint"></p></div>
+    <div class="card"><h2>What Is Going Well</h2><p id="whatIsGoingWell"></p></div>
+    <div class="card"><h2>Why We Think This</h2><p id="whyWeThinkThis"></p></div>
+    <div class="card"><h2>How Fixing It Will Help</h2><p id="howFixingItWillHelp"></p></div>
+    <div class="card"><h2>Next Steps</h2><p id="nextSteps"></p></div>
+    <p class="confidence" id="confidence"></p>
+
+    <!-- Email capture: persistence framing, never a gate — the Snapshot is
+         already fully visible above this box. -->
+    <div class="save-box" id="saveBox">
+      <p><strong>Email me this Growth Snapshot</strong> — keep it, and see what a deeper look would involve.</p>
+      <form id="emailForm" class="inline" style="margin:0">
+        <input type="email" id="email" placeholder="you@example.com" required>
+        <button type="submit" id="sendBtn">Send it to me</button>
+      </form>
+      <div class="save-msg hidden" id="saveMsg"></div>
+    </div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let runId = null;
+
+  $("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("notice").classList.add("hidden");
+    $("result").classList.add("hidden");
+    $("milestones").innerHTML = "";
+    $("waiting").classList.remove("hidden");
+    $("go").disabled = true;
+    try {
+      const res = await fetch("/api/snapshot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: $("url").value }),
+      });
+
+      if (!res.ok && res.headers.get("content-type")?.includes("application/json")) {
+        showNotice((await res.json()).message);
+        return;
+      }
+
+      // Read the NDJSON stream: milestone lines as they genuinely happen,
+      // then one final result/error line.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let final = null;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, nl).trim();
+          buffer = buffer.slice(nl + 1);
+          if (!line) continue;
+          const evt = JSON.parse(line);
+          if (evt.type === "milestone") addMilestone(evt.label);
+          else final = evt;
+        }
+      }
+
+      if (!final) { showNotice("The connection was interrupted. Please try again."); return; }
+      if (final.type === "error") { showNotice(final.message); return; }
+
+      runId = final.runId;
+      $("mockBanner").classList.toggle("hidden", !final.mockMode);
+      $("bizName").textContent = final.businessName ? `Growth Snapshot for ${final.businessName}` : "";
+      for (const k of ["primaryConstraint","whatIsGoingWell","whyWeThinkThis","howFixingItWillHelp","nextSteps"]) {
+        $(k).textContent = final.snapshot[k];
+      }
+      $("confidence").textContent = final.snapshot.confidencePlainLanguage;
+      $("saveMsg").classList.add("hidden");
+      $("email").value = "";
+      $("sendBtn").disabled = false;
+      $("result").classList.remove("hidden");
+    } catch (err) {
+      showNotice("Request failed: " + err.message);
+    } finally {
+      $("waiting").classList.add("hidden");
+      $("go").disabled = false;
+    }
+  });
+
+  function addMilestone(label) {
+    for (const li of $("milestones").children) li.classList.add("done");
+    const li = document.createElement("li");
+    li.innerHTML = '<span class="spinner"></span>' + label;
+    li.dataset.label = label;
+    $("milestones").appendChild(li);
+    setTimeout(() => { li.querySelector(".spinner")?.remove(); li.prepend(document.createTextNode("")); }, 0);
+    // Replace spinner on previous item
+    const prev = li.previousElementSibling;
+    if (prev) prev.querySelector(".spinner")?.remove();
+  }
+
+  function showNotice(msg) {
+    $("notice").textContent = msg || "Something went wrong.";
+    $("notice").classList.remove("hidden");
+  }
+
+  $("emailForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("sendBtn").disabled = true;
+    const msg = $("saveMsg");
+    msg.classList.remove("hidden");
+    msg.textContent = "Sending…";
+    try {
+      const res = await fetch("/api/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId, email: $("email").value }),
+      });
+      const data = await res.json();
+      msg.textContent = data.message;
+      if (data.state !== "sent" && data.state !== "already_sent") $("sendBtn").disabled = false;
+    } catch (err) {
+      msg.textContent = "Could not send right now — your Snapshot is still shown above.";
+      $("sendBtn").disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

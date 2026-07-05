@@ -1,0 +1,31 @@
+You are inferring a business's goal and relevant Growth Functions from limited information.
+You have only the following Client Identification Packet. You do not have any stated
+intent from the business owner — infer from this alone.
+
+{{CIP}}
+
+Based only on this information:
+1. What is this business most likely trying to achieve? (Business Goal)
+2. Which of the following Growth Functions are most relevant to that goal, and why?
+   Discoverability, Credibility, Persuasion, Capture, Response, Fulfillment, Retention,
+   Advocacy, Measurement, Consistency, Capacity, Resilience, Direction
+3. How confident are you in this inference — High, Medium, or Low — and why specifically?
+   Be honest rather than reassuring. A vague or generic CIP should produce a lower
+   confidence than a business that clearly states its own positioning.
+4. What specifically in the CIP led you to this conclusion? (Reasoning Basis)
+
+Do not guess beyond what the CIP supports. If you cannot infer with reasonable
+confidence, say so plainly rather than producing a confident-sounding guess.
+
+--- OUTPUT FORMAT (implementation detail, not Prompt Library text) ---
+Respond with a single JSON object, no other text:
+{
+  "businessGoal": "<one or two sentences>",
+  "expectedGrowthFunctions": ["<function name>", ...],
+  "growthFunctionRationale": "<why these functions, briefly>",
+  "goalModelConfidence": "High" | "Medium-High" | "Medium" | "Low",
+  "reasoningBasis": "<what in the CIP drove the inference>",
+  "cannotInfer": false | true
+}
+If you genuinely cannot infer with reasonable confidence, set "cannotInfer": true and
+explain why in "reasoningBasis" — do not fabricate a goal.

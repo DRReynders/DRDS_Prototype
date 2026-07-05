@@ -1,0 +1,23 @@
+{
+  "name": "drds-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DRDS public prototype — reasoning pipeline (Contracts 0-5), CLI-first",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/web/server.ts",
+    "pipeline": "tsx src/cli.ts",
+    "web": "tsx src/web/server.ts",
+    "regression": "tsx test/regression.ts",
+    "smoke": "tsx test/smoke.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "cheerio": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

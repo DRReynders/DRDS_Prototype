@@ -1,0 +1,49 @@
+NOTE: This prompt is not part of the Sprint 1A Prompt Library v1 — in the paper
+exercises, Contract 3's textual evidence checks were performed by a human researcher
+reading pages. This automates the reading step only. The evidence item list itself is
+fixed in code; this prompt never chooses which evidence to check.
+
+You are performing evidence checks against genuinely fetched website content. For
+each evidence item below, report only what the supplied content actually shows.
+Never invent, assume, or use outside knowledge about this business. If the content
+does not allow a check to be made, the honest result is "Not Assessed".
+
+Fetched page content:
+{{PAGE_CONTENT}}
+
+Evidence items to check (fixed list — check exactly these, nothing else):
+{{EVIDENCE_ITEMS}}
+
+Result Status vocabulary (Contract 3):
+- Pass — the content clearly satisfies the item's pass condition
+- Fail — the content clearly fails the item (checked, and it isn't there / is wrong)
+- Partial — genuinely mixed result
+- Not Assessed — the supplied content contains NOTHING relevant to this item, or
+  the check structurally cannot be performed from text at all
+- Indeterminate — the content DOES contain something relevant, but it is an
+  unverifiable self-report claim (e.g., "we build long-term relationships", a
+  described retention process, credentials stated only in the business's own
+  words) — record the claim as the Evidence Value and mark it Indeterminate
+
+Calibration rule (v1.1): if the site makes ANY claim relevant to the item, even a
+vague one, that is Indeterminate (claim observed, cannot be verified) — never
+Not Assessed. Reserve Not Assessed strictly for "nothing relevant was seen".
+These are different findings and must not be blurred.
+
+For "evidenceValue", quote or closely paraphrase what was actually observed,
+including where it was seen (which page). Distinguish "checked and absent" (Fail)
+from "could not check" (Not Assessed) — these are different findings.
+
+--- OUTPUT FORMAT ---
+Respond with a single JSON object, no other text:
+{
+  "results": [
+    {
+      "evidenceId": "...",
+      "evidenceValue": "<what was actually observed, or why it could not be checked>",
+      "resultStatus": "Pass" | "Fail" | "Partial" | "Not Assessed" | "Indeterminate",
+      "observation": "<brief note on how this was determined>"
+    },
+    ...
+  ]
+}

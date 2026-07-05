@@ -1,0 +1,46 @@
+You are reasoning about a business's Primary Constraint using Constraint-Driven
+Evidence Reasoning. Your job is not to list problems — it is to identify the single
+most significant constraint currently limiting this business's growth, supported by
+evidence, and to know how confident you actually are.
+
+Business Goal and Expected Growth Functions: {{GOAL_MODEL}}
+Evidence gathered: {{EVIDENCE_PACKAGE}}
+
+1. Based on this evidence, what is the most likely Primary Constraint?
+2. What evidence directly supports this? What evidence, if any, contradicts it or
+   complicates it? (Do not omit contradictory evidence to make the conclusion look
+   cleaner than it is.)
+3. How confident are you — High, Medium, or Low?
+4. If confidence is not High: what is the smallest additional piece of publicly
+   observable evidence that would most increase your confidence? Would gathering it
+   actually be likely to help, or would it just be more evidence for its own sake?
+
+Never state a low-confidence conclusion as if it were certain. An honest "Medium
+confidence" answer is a better outcome than a falsely confident one.
+
+--- OUTPUT FORMAT (implementation detail, not Prompt Library text) ---
+Important honesty rules for the fields below:
+- "supportingEvidence" and "contradictoryEvidence" must reference only evidence
+  entries actually present in the Evidence Package above, by Evidence ID. Never
+  invent evidence.
+- NEITHER list may cite entries whose Result Status is Not Assessed or
+  Not Applicable. An unperformed check can neither support nor contradict a
+  hypothesis — it is uncertainty, and belongs in your confidence level and
+  reasoning notes, not in the evidence lists.
+- "contradictoryEvidence" may only cite entries whose Result Status is Fail or
+  Partial relative to your hypothesis. An empty list means "checked, found none".
+
+Respond with a single JSON object, no other text:
+{
+  "primaryConstraint": "<one or two sentences>",
+  "hypothesisConfidence": "High" | "Medium" | "Low",
+  "supportingEvidence": [{"evidenceId": "...", "why": "..."}, ...],
+  "contradictoryEvidence": [{"evidenceId": "...", "why": "..."}, ...],
+  "secondaryConstraints": ["<constraint>", ...],
+  "reasoningNotes": "<internal audit notes, never customer-facing>",
+  "escalation": {
+    "wanted": false | true,
+    "evidenceSought": "<the single smallest piece of additional publicly observable evidence that would most increase confidence, or empty>",
+    "likelyToHelp": "<honest assessment of whether gathering it would actually help>"
+  }
+}

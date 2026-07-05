@@ -1,0 +1,27 @@
+Current hypothesis: {{HYPOTHESIS}}
+Current confidence: {{CONFIDENCE}}
+
+What is the single smallest piece of additional publicly observable evidence that
+would most increase or decrease confidence in this hypothesis specifically? If
+nothing realistically available would meaningfully change your confidence, say so
+plainly rather than proposing evidence-gathering for its own sake.
+
+--- OUTPUT FORMAT (implementation detail, not Prompt Library text) ---
+The only evidence-gathering method available in this run is a direct HTTP fetch of a
+page. The pages that can actually be fetched are listed below; nothing outside this
+list is reachable (no search engines, no Google Business Profile, no third-party
+directories).
+
+Fetchable pages not yet examined:
+{{AVAILABLE_PAGES}}
+
+Respond with a single JSON object, no other text:
+{
+  "worthAttempting": false | true,
+  "evidenceSought": "<what specifically would be checked, or empty>",
+  "urlToFetch": "<one URL from the fetchable list above, or empty if none would help>",
+  "reasoning": "<why this would (or would not) meaningfully change confidence>"
+}
+If nothing on the fetchable list would meaningfully change confidence, set
+"worthAttempting": false — proposing evidence-gathering for its own sake is worse
+than concluding honestly with what is available.
