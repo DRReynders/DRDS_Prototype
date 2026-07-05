@@ -5,34 +5,101 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DRDS — Growth Snapshot</title>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; line-height: 1.5; }
-  h1 { font-size: 1.6rem; }
-  form.inline { display: flex; gap: .5rem; margin: 1.5rem 0; }
-  input { padding: .6rem; font-size: 1rem; border: 1px solid #999; border-radius: 4px; }
+  :root {
+    --ink: #0D1B2A;
+    --slate: #4A5568;
+    --muted: #ABAFB5;
+    --paper: #F8F7F4;
+    --hairline: #E5E5E5;
+    --gold: #C9A84C;
+    --gold-tint: #F5EDD6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', Inter, Arial, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.6;
+    margin: 0;
+  }
+  .page { max-width: 620px; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+  .kicker { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+  h1 { font-family: Georgia, 'Playfair Display', 'Times New Roman', serif; font-weight: 400; font-size: 1.75rem; margin: 0 0 .75rem; color: var(--ink); }
+  .lede { color: var(--slate); font-size: .95rem; margin: 0 0 2rem; max-width: 52ch; }
+
+  form.inline { display: flex; gap: .5rem; margin: 0 0 1.5rem; }
+  input {
+    padding: .7rem .8rem; font-size: .95rem; border: 1px solid var(--hairline);
+    border-radius: 6px; background: #fff; color: var(--ink); font-family: inherit;
+  }
+  input:focus { outline: none; border-color: var(--slate); }
   input[type=url], input[type=email] { flex: 1; }
-  button { padding: .6rem 1.2rem; font-size: 1rem; cursor: pointer; }
-  button:disabled { cursor: default; opacity: .6; }
-  .hidden { display: none; }
-  .spinner { display: inline-block; width: 1em; height: 1em; border: 2px solid #ccc; border-top-color: #333; border-radius: 50%; animation: spin 1s linear infinite; vertical-align: -2px; margin-right: .5em; }
+  button {
+    padding: .7rem 1.3rem; font-size: .9rem; font-family: inherit; cursor: pointer;
+    background: var(--ink); color: var(--paper); border: none; border-radius: 6px;
+  }
+  button:hover { background: var(--slate); }
+  button:disabled { cursor: default; opacity: .55; }
+
+  .hidden { display: none !important; }
+
+  .spinner {
+    display: inline-block; width: .85em; height: .85em; border: 2px solid var(--hairline);
+    border-top-color: var(--slate); border-radius: 50%; animation: spin 1s linear infinite;
+    vertical-align: -1px; margin-right: .5em;
+  }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .card { border: 1px solid #ddd; border-radius: 6px; padding: 1rem; margin: 1rem 0; }
-  .card h2 { font-size: 1rem; margin: 0 0 .5rem; text-transform: uppercase; letter-spacing: .03em; color: #555; }
-  .notice { border: 1px solid #c90; background: #fff8e1; padding: 1rem; border-radius: 6px; margin: 1rem 0; }
-  .mock-banner { border: 3px solid #c00; background: #ffecec; color: #900; font-weight: bold; padding: 1rem; border-radius: 6px; margin: 1rem 0; text-align: center; }
-  .confidence { font-style: italic; color: #444; }
-  /* Waiting Room: milestones appear when the pipeline genuinely reaches them */
-  #milestones { list-style: none; padding: 0; margin: 1.5rem 0; }
-  #milestones li { padding: .35rem 0; color: #333; }
-  #milestones li.done::before { content: "✓ "; color: #2a7d2a; font-weight: bold; }
-  .save-box { border: 1px solid #bbb; background: #f8f8f8; border-radius: 6px; padding: 1rem; margin: 1.5rem 0; }
-  .save-box p { margin: 0 0 .6rem; }
-  .save-msg { margin-top: .6rem; font-size: .95rem; }
+  #waiting p { color: var(--slate); font-size: .9rem; }
+
+  #milestones { list-style: none; padding: 0; margin: 1.25rem 0 0; }
+  #milestones li { padding: .4rem 0; color: var(--slate); font-size: .9rem; }
+  #milestones li.done { color: var(--ink); }
+  #milestones li.done::before { content: "✓ "; color: var(--gold); font-weight: 600; }
+
+  .notice {
+    border: 1px solid var(--hairline); background: #fff; padding: 1rem 1.25rem;
+    border-radius: 6px; margin: 1.5rem 0; color: var(--ink); font-size: .9rem;
+    border-left: 3px solid var(--gold);
+  }
+  .mock-banner {
+    background: var(--gold-tint); color: #6b551f; font-size: .8rem; font-weight: 600;
+    letter-spacing: .03em; padding: .6rem 1rem; border-radius: 6px; margin: 0 0 1.75rem;
+    text-align: center; text-transform: uppercase;
+  }
+
+  .brief { background: #fff; border: 1px solid var(--hairline); border-radius: 8px; padding: 2.5rem 2.5rem; }
+  .brief-kicker { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+  .brief-name { font-family: Georgia, 'Playfair Display', 'Times New Roman', serif; font-weight: 400; font-size: 1.5rem; margin: 0 0 4px; }
+  .brief-date { font-size: .82rem; color: var(--slate); margin: 0 0 1.75rem; }
+
+  .finding {
+    border-top: 1px solid var(--gold); border-bottom: 1px solid var(--hairline);
+    padding: 1.4rem 0; margin: 0 0 1.75rem;
+  }
+  .finding p {
+    font-family: Georgia, 'Playfair Display', 'Times New Roman', serif;
+    font-size: 1.2rem; line-height: 1.55; margin: 0; color: var(--ink);
+  }
+
+  .section { padding: 0 0 1.5rem; border-bottom: 1px solid var(--hairline); margin-bottom: 1.5rem; }
+  .section:last-of-type { border-bottom: none; }
+  .section h2 { font-size: .8rem; font-weight: 600; text-transform: none; letter-spacing: .01em; color: var(--slate); margin: 0 0 .5rem; }
+  .section p { font-size: .95rem; line-height: 1.7; margin: 0; color: var(--ink); }
+
+  .confidence { font-style: italic; color: var(--slate); font-size: .85rem; margin: 0 0 2rem; }
+
+  .save-box { border-top: 1px solid var(--hairline); padding-top: 1.75rem; margin-top: .5rem; }
+  .save-box p.lead { margin: 0 0 .9rem; font-size: .9rem; color: var(--slate); }
+  .save-box p.lead strong { color: var(--ink); }
+  .save-msg { margin-top: .7rem; font-size: .85rem; color: var(--slate); }
 </style>
 </head>
 <body>
-  <h1>DRDS Growth Audit</h1>
-  <p>Enter your business website and receive a Growth Snapshot — a short, specific
-  diagnosis of the single biggest thing currently limiting your growth, based on
+<div class="page">
+  <div class="kicker">DRDS Growth Audit</div>
+  <h1>Find your single biggest growth constraint</h1>
+  <p class="lede">Enter your business website and receive a Growth Snapshot — a short,
+  specific diagnosis of the one thing currently limiting your growth, based on
   genuine, publicly observable evidence.</p>
 
   <form id="form" class="inline">
@@ -50,27 +117,36 @@
 
   <div id="result" class="hidden">
     <div id="mockBanner" class="mock-banner hidden">
-      MOCK OUTPUT — structural testing only. This is NOT a real analysis of your business.
+      Mock output — structural testing only, not a real analysis of your business
     </div>
-    <p id="bizName" style="font-weight:bold"></p>
-    <div class="card"><h2>Primary Constraint</h2><p id="primaryConstraint"></p></div>
-    <div class="card"><h2>What Is Going Well</h2><p id="whatIsGoingWell"></p></div>
-    <div class="card"><h2>Why We Think This</h2><p id="whyWeThinkThis"></p></div>
-    <div class="card"><h2>How Fixing It Will Help</h2><p id="howFixingItWillHelp"></p></div>
-    <div class="card"><h2>Next Steps</h2><p id="nextSteps"></p></div>
-    <p class="confidence" id="confidence"></p>
 
-    <!-- Email capture: persistence framing, never a gate — the Snapshot is
-         already fully visible above this box. -->
-    <div class="save-box" id="saveBox">
-      <p><strong>Email me this Growth Snapshot</strong> — keep it, and see what a deeper look would involve.</p>
-      <form id="emailForm" class="inline" style="margin:0">
-        <input type="email" id="email" placeholder="you@example.com" required>
-        <button type="submit" id="sendBtn">Send it to me</button>
-      </form>
-      <div class="save-msg hidden" id="saveMsg"></div>
+    <div class="brief">
+      <div class="brief-kicker">Growth Snapshot</div>
+      <p class="brief-name" id="bizName"></p>
+      <p class="brief-date" id="preparedDate"></p>
+
+      <div class="finding"><p id="primaryConstraint"></p></div>
+
+      <div class="section"><h2>What is going well</h2><p id="whatIsGoingWell"></p></div>
+      <div class="section"><h2>Why we think this</h2><p id="whyWeThinkThis"></p></div>
+      <div class="section"><h2>What changes if this is fixed</h2><p id="howFixingItWillHelp"></p></div>
+      <div class="section"><h2>Next steps</h2><p id="nextSteps"></p></div>
+
+      <p class="confidence" id="confidence"></p>
+
+      <!-- Email capture: persistence framing, never a gate — the Snapshot is
+           already fully visible above this box. -->
+      <div class="save-box" id="saveBox">
+        <p class="lead"><strong>Email me this Growth Snapshot</strong> — keep it, and see what a deeper look would involve.</p>
+        <form id="emailForm" class="inline" style="margin:0">
+          <input type="email" id="email" placeholder="you@example.com" required>
+          <button type="submit" id="sendBtn">Send it to me</button>
+        </form>
+        <div class="save-msg hidden" id="saveMsg"></div>
+      </div>
     </div>
   </div>
+</div>
 
 <script>
   const $ = (id) => document.getElementById(id);
@@ -121,10 +197,12 @@
 
       runId = final.runId;
       $("mockBanner").classList.toggle("hidden", !final.mockMode);
-      $("bizName").textContent = final.businessName ? `Growth Snapshot for ${final.businessName}` : "";
-      for (const k of ["primaryConstraint","whatIsGoingWell","whyWeThinkThis","howFixingItWillHelp","nextSteps"]) {
+      $("bizName").textContent = final.businessName || "Your business";
+      $("preparedDate").textContent = "Prepared " + new Date().toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" }) + " · based on publicly observable evidence";
+      for (const k of ["whatIsGoingWell","whyWeThinkThis","howFixingItWillHelp","nextSteps"]) {
         $(k).textContent = final.snapshot[k];
       }
+      $("primaryConstraint").textContent = final.snapshot.primaryConstraint;
       $("confidence").textContent = final.snapshot.confidencePlainLanguage;
       $("saveMsg").classList.add("hidden");
       $("email").value = "";
