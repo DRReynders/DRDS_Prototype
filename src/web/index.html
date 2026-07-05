@@ -27,16 +27,18 @@
   h1 { font-family: Georgia, 'Playfair Display', 'Times New Roman', serif; font-weight: 400; font-size: 1.75rem; margin: 0 0 .75rem; color: var(--ink); }
   .lede { color: var(--slate); font-size: .95rem; margin: 0 0 2rem; max-width: 52ch; }
 
-  form.inline { display: flex; gap: .5rem; margin: 0 0 1.5rem; }
+  form.inline { display: flex; gap: .5rem; margin: 0 0 1.5rem; flex-wrap: wrap; }
   input {
-    padding: .7rem .8rem; font-size: .95rem; border: 1px solid var(--hairline);
+    padding: .85rem .8rem; font-size: .95rem; border: 1px solid var(--hairline);
     border-radius: 6px; background: #fff; color: var(--ink); font-family: inherit;
+    min-height: 44px;
   }
   input:focus { outline: none; border-color: var(--slate); }
-  input[type=url], input[type=email] { flex: 1; }
+  input[type=url], input[type=email] { flex: 1; min-width: 0; }
   button {
-    padding: .7rem 1.3rem; font-size: .9rem; font-family: inherit; cursor: pointer;
+    padding: .85rem 1.3rem; font-size: .9rem; font-family: inherit; cursor: pointer;
     background: var(--ink); color: var(--paper); border: none; border-radius: 6px;
+    min-height: 44px;
   }
   button:hover { background: var(--slate); }
   button:disabled { cursor: default; opacity: .55; }
@@ -92,6 +94,14 @@
   .save-box p.lead { margin: 0 0 .9rem; font-size: .9rem; color: var(--slate); }
   .save-box p.lead strong { color: var(--ink); }
   .save-msg { margin-top: .7rem; font-size: .85rem; color: var(--slate); }
+
+  @media (max-width: 560px) {
+    .page { padding: 2rem 1.25rem 3rem; }
+    form.inline { flex-direction: column; align-items: stretch; }
+    form.inline input[type=url], form.inline input[type=email] { flex: none; }
+    form.inline button { width: 100%; }
+    .brief { padding: 1.75rem 1.5rem; }
+  }
 </style>
 </head>
 <body>
