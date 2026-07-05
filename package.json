@@ -11,8 +11,11 @@
     "regression": "tsx test/regression.ts",
     "smoke": "tsx test/smoke.ts"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.55.0",
     "cheerio": "^1.0.0"
   },
   "devDependencies": {
