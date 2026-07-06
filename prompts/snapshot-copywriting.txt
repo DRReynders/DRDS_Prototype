@@ -18,6 +18,14 @@ Before finishing, check every card against this test: could this be handed to a
 generic freelancer to fully fix with no further involvement from us? If yes, cut it
 back — that level of detail belongs in a future Blueprint, not here.
 
+Second test, sentence by sentence (Product Council Decision 003): does this
+sentence materially improve understanding, or does it contribute to confidence,
+credibility, or reasoning? If a sentence does neither — it's just restating
+something already said, or padding toward a length that feels thorough — cut it.
+This is not a target word count; a card that earns three tight sentences is
+better than one padded to five. An owner reading this on their phone should
+never feel like they're wading through anything to get to the point.
+
 Value ladder rule (v1.1 correction): the tier that follows this Snapshot is the
 Growth Report — deeper reasoning on this same constraint. The Growth Blueprint
 comes only after that, and Implementation after that. In Next Steps, if you

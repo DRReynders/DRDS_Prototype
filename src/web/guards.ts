@@ -20,10 +20,15 @@ export function rateLimitCheck(ip: string): { allowed: boolean; message?: string
   const recent = (hits.get(ip) ?? []).filter((t) => t > windowStart);
   if (recent.length >= perHour) {
     hits.set(ip, recent);
+    // Tell them roughly when their oldest hit falls out of the rolling window,
+    // rather than a vague "later" — a real ETA reads as intentional, not stuck.
+    const retryMinutes = Math.max(1, Math.ceil((recent[0] + 3_600_000 - now) / 60_000));
     return {
       allowed: false,
       message:
-        "You've reached the limit of Growth Snapshots for this hour. Please try again a little later.",
+        `You've reached this hour's limit for automated Growth Snapshots — a deliberate ` +
+        `limit that keeps the tool fast and fair for everyone. Please try again in about ` +
+        `${retryMinutes} minute${retryMinutes === 1 ? "" : "s"}.`,
     };
   }
   recent.push(now);

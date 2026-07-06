@@ -67,7 +67,7 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
     json(res, 503, {
       type: "error",
       state: "busy",
-      message: "Another Growth Snapshot is being generated right now. Please try again in a minute.",
+      message: "We're preparing another Growth Snapshot right now — please try again in a minute.",
     });
     return;
   }
