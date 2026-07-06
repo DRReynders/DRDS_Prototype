@@ -166,7 +166,7 @@
 
       <!-- Journey continuation (PC-003): one primary next step, not a menu. -->
       <div class="continue">
-        <p class="continue-lead">Want a deeper, human-led look at this constraint?</p>
+        <p class="continue-lead">Want to explore this constraint in more depth?</p>
         <a class="continue-cta" href="https://drdigitalsystems.co.za/strategy-call/">Book a Strategy Call</a>
       </div>
 
@@ -266,9 +266,10 @@
   }
 
   // States where the automated path is temporarily unavailable but the
-  // journey shouldn't dead-end — offer the human alternative right there
-  // instead of leaving the visitor to figure out what to do next.
-  const GRACEFUL_FALLBACK_STATES = new Set(["rate_limited", "daily_capacity"]);
+  // journey shouldn't dead-end — offer the alternative path right there
+  // instead of leaving the visitor to figure out what to do next. "error"
+  // covers the generic/unexpected-failure fallback added in Sprint 2 Stage 1.
+  const GRACEFUL_FALLBACK_STATES = new Set(["rate_limited", "daily_capacity", "error"]);
 
   function showNotice(msg, state) {
     const notice = $("notice");

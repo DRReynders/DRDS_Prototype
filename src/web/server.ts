@@ -36,6 +36,89 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
+// Sprint 2 Stage 1: no raw provider/infrastructure/exception text ever reaches
+// the visitor. The full technical detail is still written to the per-run log
+// file (log.failure, log.stages) and to stdout here (see logRunSummary) — this
+// function only controls what the client is shown.
+const GENERIC_FAILURE_MESSAGE =
+  "We couldn't complete this Growth Audit just now. This is usually temporary — please try again shortly.";
+
+function clientFacingFailureMessage(failure: { stage: string; reason: string }): { state: string; message: string } {
+  switch (failure.stage) {
+    case "Contract 0":
+      if (failure.reason.startsWith("Empty input")) {
+        return { state: "input_failed", message: "Please enter a business website URL." };
+      }
+      if (failure.reason.startsWith("Input could not be parsed")) {
+        return {
+          state: "input_failed",
+          message: "That doesn't look like a valid website address. Please check it and try again.",
+        };
+      }
+      // Any other Contract 0 failure is a reachability/fetch/timeout problem —
+      // the underlying reason may contain raw fetch/network exception text
+      // (see fetcher.ts), so it is never interpolated into this message.
+      return {
+        state: "input_failed",
+        message: "We couldn't reach that website just now. Please double-check the address, or try again in a moment.",
+      };
+    case "Contract 1":
+      // CannotIdentifyError messages are already human-written and clean, but
+      // are deliberately not shown verbatim — keeps this mapping the single
+      // place that decides what visitors see, independent of how any
+      // Contract's internal error text might change later.
+      return {
+        state: "input_failed",
+        message:
+          "We couldn't gather enough information from that site to complete the analysis. Please check the website is publicly accessible and try again.",
+      };
+    case "configuration":
+      return {
+        state: "unavailable",
+        message: "The Growth Audit isn't fully set up in this environment yet, so the analysis couldn't run.",
+      };
+    case "budget":
+      return {
+        state: "error",
+        message: "This analysis reached a safety limit and stopped before completing. Please try again shortly.",
+      };
+    default:
+      // Covers "unexpected" (e.g. an upstream provider outage) and any future
+      // stage name not explicitly handled above — always the same calm,
+      // generic message, never the raw stage name or reason.
+      return { state: "error", message: GENERIC_FAILURE_MESSAGE };
+  }
+}
+
+// Sprint 2 Stage 1: a compact one-line JSON summary to stdout for every run,
+// success or failure. Redundant with the per-run log file on disk — this is
+// the mitigation for Railway's persistent-storage status being unconfirmed;
+// Railway's own deploy/log viewer is separate from the container's local
+// filesystem, so a run's key facts survive here even if the JSON file itself
+// is ever lost to a redeploy. No new infrastructure, no PII beyond what's
+// already in the log file.
+function logRunSummary(log: {
+  runId: string;
+  startedAt: string;
+  finishedAt?: string;
+  input: { rawInputValue: string; normalisedBusinessIdentifier: string };
+  failure?: { stage: string; reason: string };
+  llmUsage?: { totals: { estimatedCostUsd: number } };
+}): void {
+  console.log(
+    "PV_RUN_SUMMARY " +
+      JSON.stringify({
+        runId: log.runId,
+        url: log.input.rawInputValue,
+        startedAt: log.startedAt,
+        finishedAt: log.finishedAt,
+        status: log.failure ? "failed" : "completed",
+        failureStage: log.failure?.stage,
+        estimatedCostUsd: log.llmUsage?.totals.estimatedCostUsd ?? null,
+      })
+  );
+}
+
 function clientIp(req: IncomingMessage): string {
   const fwd = req.headers["x-forwarded-for"];
   if (typeof fwd === "string" && fwd.length) return fwd.split(",")[0].trim();
@@ -67,7 +150,7 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
     json(res, 503, {
       type: "error",
       state: "busy",
-      message: "We're preparing another Growth Snapshot right now — please try again in a minute.",
+      message: "We're completing another Growth Audit right now. Please try again in a few minutes.",
     });
     return;
   }
@@ -101,28 +184,11 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
     if (log.llmUsage && log.llmUsage.totals.estimatedCostUsd > 0) {
       recordSpend(log.llmUsage.totals.estimatedCostUsd);
     }
+    logRunSummary(log);
 
-    if (log.failure?.stage === "configuration") {
-      write({
-        type: "error",
-        state: "llm_not_configured",
-        message:
-          "This prototype requires a configured LLM provider to generate a real Growth Snapshot. No provider is currently configured, so the analysis could not run.",
-      });
-    } else if (log.failure?.stage === "Contract 0") {
-      write({ type: "error", state: "input_failed", message: `We couldn't reach that website: ${log.failure.reason}` });
-    } else if (log.failure?.stage === "budget") {
-      write({
-        type: "error",
-        state: "budget",
-        message: "This analysis hit its cost ceiling and stopped safely. Please try again later.",
-      });
-    } else if (log.failure) {
-      write({
-        type: "error",
-        state: "error",
-        message: `The analysis could not be completed (${log.failure.stage}): ${log.failure.reason}`,
-      });
+    if (log.failure) {
+      const { state, message } = clientFacingFailureMessage(log.failure);
+      write({ type: "error", state, message });
     } else {
       write({
         type: "result",
@@ -135,10 +201,15 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
     }
     res.end();
   } catch (err) {
+    // Truly unexpected — outside the pipeline's own try/catch (e.g. a bad
+    // request body). Full detail goes to the server's own console (captured
+    // by Railway's log viewer); the visitor never sees it.
+    console.error("PV_UNEXPECTED_SERVER_ERROR", err instanceof Error ? err.stack ?? err.message : String(err));
+    const body = { type: "error", state: "error", message: GENERIC_FAILURE_MESSAGE };
     if (!res.headersSent) {
-      json(res, 500, { type: "error", state: "error", message: err instanceof Error ? err.message : String(err) });
+      json(res, 500, body);
     } else {
-      res.end(JSON.stringify({ type: "error", state: "error", message: err instanceof Error ? err.message : String(err) }) + "\n");
+      res.end(JSON.stringify(body) + "\n");
     }
   } finally {
     busy = false;
@@ -171,10 +242,20 @@ async function handleEmail(req: IncomingMessage, res: ServerResponse): Promise<v
       );
       found.log.emailDelivery = { to: email, sentAt: new Date().toISOString(), provider: sent.provider, status: "sent" };
       updateRunLog(found.file, found.log);
+      console.log(
+        "PV_EMAIL_SUMMARY " + JSON.stringify({ runId, email, status: "sent", sentAt: found.log.emailDelivery.sentAt })
+      );
       json(res, 200, { state: "sent", message: "Done — your Growth Snapshot is on its way to your inbox." });
     } catch (err) {
       if (err instanceof EmailNotConfiguredError) {
-        json(res, 200, { state: "email_not_configured", message: err.message });
+        // Internal reason (e.g. "RESEND_API_KEY is not set") is exactly what
+        // it says — logged, never shown. The visitor gets a calm generic
+        // message; nothing about email providers or configuration.
+        console.error("PV_EMAIL_NOT_CONFIGURED", err.message);
+        json(res, 200, {
+          state: "email_not_configured",
+          message: "Email delivery isn't available right now, but your Snapshot is still shown above — nothing was lost.",
+        });
         return;
       }
       found.log.emailDelivery = {
@@ -185,13 +266,18 @@ async function handleEmail(req: IncomingMessage, res: ServerResponse): Promise<v
         detail: err instanceof Error ? err.message : String(err),
       };
       updateRunLog(found.file, found.log);
+      console.error("PV_EMAIL_SEND_FAILED", runId, err instanceof Error ? err.message : String(err));
       json(res, 502, {
         state: "send_failed",
         message: "We couldn't send the email right now. Your Snapshot is still shown above — nothing was lost.",
       });
     }
   } catch (err) {
-    json(res, 500, { state: "error", message: err instanceof Error ? err.message : String(err) });
+    console.error("PV_UNEXPECTED_EMAIL_ERROR", err instanceof Error ? err.stack ?? err.message : String(err));
+    json(res, 500, {
+      state: "error",
+      message: "Something went wrong on our end. Your Snapshot is still shown above — nothing was lost.",
+    });
   }
 }
 

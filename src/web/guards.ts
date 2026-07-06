@@ -25,10 +25,12 @@ export function rateLimitCheck(ip: string): { allowed: boolean; message?: string
     const retryMinutes = Math.max(1, Math.ceil((recent[0] + 3_600_000 - now) / 60_000));
     return {
       allowed: false,
+      // Deliberately no CTA mention here — the client appends a real,
+      // clickable Strategy Call link for this state (see GRACEFUL_FALLBACK_STATES
+      // in index.html). Keeping it out of this string avoids saying it twice.
       message:
-        `You've reached this hour's limit for automated Growth Snapshots — a deliberate ` +
-        `limit that keeps the tool fast and fair for everyone. Please try again in about ` +
-        `${retryMinutes} minute${retryMinutes === 1 ? "" : "s"}.`,
+        `You've reached today's limit for instant Growth Audits from this connection. ` +
+        `Try again in about ${retryMinutes} minute${retryMinutes === 1 ? "" : "s"}.`,
     };
   }
   recent.push(now);
@@ -68,7 +70,7 @@ export function dailyBudgetCheck(): { allowed: boolean; message?: string } {
     return {
       allowed: false,
       message:
-        "We've reached today's capacity for free Growth Snapshots. Please come back tomorrow — nothing is wrong with your website.",
+        "We've reached today's capacity for Growth Audits. Please try again tomorrow — this isn't a reflection of your business, simply a temporary capacity limit.",
     };
   }
   return { allowed: true };
