@@ -9,7 +9,10 @@
     "pipeline": "tsx src/cli.ts",
     "web": "tsx src/web/server.ts",
     "regression": "tsx test/regression.ts",
-    "smoke": "tsx test/smoke.ts"
+    "smoke": "tsx test/smoke.ts",
+    "report:appendix": "tsx tools/evidence-appendix.ts",
+    "report:assemble": "tsx tools/assemble-report.ts",
+    "report:render": "tsx tools/render-report.ts"
   },
   "engines": {
     "node": ">=20"
