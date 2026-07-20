@@ -10,6 +10,18 @@ const DEFAULT_MODELS: Record<ModelTier, string> = {
   reasoning: "claude-sonnet-5", // Goal Model, CDER, Snapshot copywriting
 };
 
+// Output ceiling per tier. "reasoning" calls (CDER, Snapshot copywriting) do
+// substantial internal drafting/self-checking before the final answer — the
+// Snapshot v1.2 verification pass (2026-07-20) observed reasoning-tier calls
+// exhausting a 4096 ceiling mid-answer even though the finished JSON is short
+// (well under the ~150-word Snapshot cap), reproducibly on at least one
+// business. Doubled to give headroom without masking runaway generation.
+// "fast" tier has shown no such failure; left unchanged.
+const MAX_OUTPUT_TOKENS: Record<ModelTier, number> = {
+  fast: 4096,
+  reasoning: 8192,
+};
+
 export class AnthropicProvider implements LlmProvider {
   readonly name = "anthropic";
   private client: Anthropic;
@@ -32,7 +44,7 @@ export class AnthropicProvider implements LlmProvider {
     const model = this.models[tier];
     const res = await this.client.messages.create({
       model,
-      max_tokens: 4096,
+      max_tokens: MAX_OUTPUT_TOKENS[tier],
       messages: [{ role: "user", content: prompt }],
     });
     return {
