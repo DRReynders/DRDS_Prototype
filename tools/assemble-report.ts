@@ -1,9 +1,19 @@
-// A4 — Growth Report Assembly Skeleton (Sprint 3 Stage A).
+// A4 — Growth Report Assembly Skeleton (Sprint 3 Stage A; aligned to
+// template v1.1 in Stage B3, 2026-07-20).
 // Takes a stored run log and emits a DRAFT Growth Report as markdown,
-// following DRDS_Growth_Report_Template_001.md: fixed copy filled in,
-// pipeline-derived fields resolved, founder-judgement sections scaffolded
-// with [FOUNDER — …] instructions. The output is NEVER client-facing as
-// generated — it exists so founder time goes to judgement, not formatting.
+// following DRDS_Growth_Report_Template_001.md (v1.1): fixed copy filled
+// in, pipeline-derived fields resolved, founder-judgement sections
+// scaffolded with [FOUNDER — …] instructions. The output is NEVER
+// client-facing as generated — it exists so founder time goes to
+// judgement, not formatting.
+//
+// v1.1 section order: 1 How to read · 2 Finding at a glance (+ finding
+// class) · 3 Business observed · 4 Constraint map · 5 Evidence · 5b
+// Competitive context · 6 What changes when addressed · 7 What is working
+// · 8 Sequence · 9 Practitioner brief · 10 Confidence & coverage · 11 Next
+// steps · Appendix. Evidence precedes strengths; §5b and §6 are
+// founder-authored scaffolds (the pipeline generates no competitor
+// content and no impact projections).
 //
 // Standalone dev tool; type-only imports from src/ (erased at runtime).
 // No pipeline module is imported or executed; Contracts 0–5 untouched.
@@ -122,6 +132,10 @@ function assemble(log: RunLog, sourceFile: string): string {
   const confidencePlain = snap?.confidencePlainLanguage
     ?? `(no snapshot in log — hypothesis confidence recorded as: ${rr!.hypothesisConfidence})`;
 
+  const howFixingRef = snap?.howFixingItWillHelp
+    ? `Snapshot's "how fixing it helps" (raw material only — rewrite for report depth, never paste): ${snap.howFixingItWillHelp}`
+    : "no Snapshot howFixingItWillHelp in this run log — draft from the constraint map's \"what it starves\" reasoning";
+
   return `<!-- DRAFT Growth Report — generated ${new Date().toISOString()} from ${sourceFile}.
      NOT client-facing until every [FOUNDER] note is resolved and the
      template QA checklist passes. Template: DRDS_Growth_Report_Template_001.md -->
@@ -150,12 +164,12 @@ instructions: those belong to whoever implements, once the sequence is
 agreed.
 
 Three sections matter most if you read nothing else: **The finding at
-a glance** (next page), **The sequence** (§7), and **Where not to
-spend money right now** (§5).
+a glance** (next page), **The sequence** (§8), and **Where not to
+spend money right now** (§7).
 
 Everything this report claims is tied to an observation listed in the
 Evidence Register at the back. Where our evidence could not see
-something, we say so plainly in §9 rather than guessing.
+something, we say so plainly in §10 rather than guessing.
 
 ---
 
@@ -178,6 +192,16 @@ ${WRITE_HERE}
 ${confidencePlain}
 
 ${F("Plain language only — never a number or a grade. Restate for report depth if the Snapshot sentence is too thin.")}
+
+▣ *Nothing in this report manufactures weakness. Where the evidence
+shows strength, we say so — the finding above is the honest next
+constraint, at whatever level it sits.*
+
+**Finding class**  ${WRITE_HERE}
+
+${F(
+    "Standard engagements: delete this Finding-class block entirely (keep the 'Nothing in this report manufactures weakness' line above). High-Maturity Growth Profile engagements (trigger recorded in the Manual Evidence Extension Checklist §11 — register predominantly Pass, no Fail on load-bearing checks, constraint refinement-class not deficiency-class): state \"Finding class: High-Maturity Growth Profile.\" and make sure the primary constraint above reads as the next constraint on compounding, never as a defect."
+  )}
 
 ---
 
@@ -226,25 +250,7 @@ ${WRITE_HERE} ${F(
 
 ---
 
-## 5. What is genuinely working — and where not to spend right now
-
-*An honest diagnosis includes what does not need money spent on it.*
-
-**Working, with evidence**
-
-${whatsWorkingDraft}
-
-${F("Edit into narrated items: what works + why it matters. Genuine and specific; cut anything that reads as praise padding.")}
-
-**Where not to spend money right now**
-
-${WRITE_HERE} ${F(
-    "2–4 items a vendor would happily sell this business that the sequence says should wait, one line each on why waiting is correct. Name activities, never specific vendors."
-  )}
-
----
-
-## 6. The evidence behind the finding
+## 5. The evidence behind the finding
 
 *We do not ask you to take the finding on faith. The full register of
 every check is in the Appendix.*
@@ -254,20 +260,62 @@ every check is in the Appendix.*
 ${supportingDraft}
 
 ${F(
-    "Edit for narrative, grouped by growth function: what/where/why-it-matters per load-bearing observation. Ceiling: 10–20 narrated items; the rest stay appendix-only."
+    "Edit for narrative, grouped by growth function: what/where/why-it-matters per load-bearing observation. Integrate the load-bearing M-rows from this engagement's Manual Evidence Extension Checklist (§13 of that document) alongside the automated rows — the manual pass strengthens the automated base, it never replaces it. Ceiling: 10–20 narrated items, automated and manual combined; the rest stay appendix-only."
   )}
 
 **Evidence that points the other way**
 
 ${contradictoryDraft}
 
-${F("Never delete this subsection — stating the against-case is a signature honesty move of this product.")}
+${F("From reasoningResult.contradictoryEvidence plus the checklist's §13.3 against-case hunt. Never delete this subsection — stating the against-case is a signature honesty move of this product.")}
+
+### 5b. Competitive context (public evidence)
+
+*This is context, not a competitive strategy. It shows how the
+constraint looks against what a buyer comparing you would actually
+see. A deeper competitive review — site structure, local visibility,
+review dynamics, share of search where tools allow — belongs to the
+Growth Blueprint.*
+
+${WRITE_HERE} ${F(
+    "Founder-authored from the Manual Evidence Extension Checklist §10 — the pipeline does NOT generate competitor content and none is invented here. 3–6 paired public-evidence observations, ONE client-named competitor OR one to two visible market references, never more than two subjects. Each row is a paired observation with sources, e.g. \"Reference A presents 12 named client testimonials on a dedicated page; your site presents none.\" Observations only — no strategy commentary about the competitor, no rank-/keyword-share data, no backlink comparisons, no multi-competitor grids. If the checklist's §10.0 found the public evidence too thin for a fair comparison, DELETE this entire §5b — an honest omission beats a padded comparison."
+  )}
+
+---
+
+## 6. What changes when this is addressed
+
+*Before we show what is already working, the stakes deserve one
+plain page: what this constraint is quietly costing, and what
+removing it unlocks.*
+
+${WRITE_HERE} ${F(
+    `2–4 sentences, system-level: what the constraint costs today, what removing it unlocks downstream, and why the layers above it start paying back once it moves. Raw material — ${howFixingRef}; plus the §4 constraint map's "what it starves" reasoning. NO numeric projections, NO guarantees, no timelines — the exclusion list applies in full; the persuasion here is mechanism, not magnitude. For High-Maturity Growth Profile engagements this section speaks to compounding and precision, not repair.`
+  )}
+
+---
+
+## 7. What is genuinely working — and where not to spend right now
+
+*An honest diagnosis includes what does not need money spent on it.*
+
+**Working, with evidence**
+
+${whatsWorkingDraft}
+
+${F("Edit into narrated items: what works + why it matters. Genuine and specific; cut anything that reads as praise padding. High-Maturity Growth Profile engagements: this section carries MORE narrated weight than usual — but weight, not position: it still follows the constraint, its evidence (§5), and its stakes (§6).")}
+
+**Where not to spend money right now**
+
+${WRITE_HERE} ${F(
+    "2–4 items a vendor would happily sell this business that the sequence says should wait, one line each on why waiting is correct. Name activities, never specific vendors."
+  )}
 
 ---
 
 <div class="page-break"></div>
 
-## 7. The sequence
+## 8. The sequence
 
 *Effort put into the wrong layer first is not partially wasted — it is
 usually fully wasted, because the layer above undoes it. This is the
@@ -299,7 +347,7 @@ ${WRITE_HERE}
 
 ---
 
-## 8. The practitioner brief
+## 9. The practitioner brief
 
 *This section is written to be handed over. Give it to your website
 person, your marketing partner, your internal team — or to DRDS. It
@@ -334,7 +382,7 @@ ${F(
 
 ---
 
-## 9. Confidence and coverage — what we could and could not see
+## 10. Confidence and coverage — what we could and could not see
 
 *This report works from publicly and organically observable evidence —
 what the outside world can see of your business. That boundary is a
@@ -353,12 +401,12 @@ ${notAssessedDraft}
 </div>
 
 ${F(
-    "Must read as disclosure, never as a pitch. Product mentions live in §10 only. Check §9 names every Not Assessed row from the appendix."
+    "Must read as disclosure, never as a pitch. Product mentions live in §11 only. Check this section names every Not Assessed row from the appendix. After the manual checklist pass, GBP rows should no longer sit here unless a listing genuinely doesn't exist."
   )}
 
 ---
 
-## 10. Next steps
+## 11. Next steps
 
 Your Report Walkthrough is included: a 30-minute call to walk the
 finding and the sequence, answer questions, and make sure whoever
