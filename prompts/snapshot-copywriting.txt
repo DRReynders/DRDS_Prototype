@@ -4,34 +4,65 @@ owner who has never seen this kind of analysis before. Plain language throughout
 {{REASONING_RESULT}}
 
 Write:
-1. Primary Constraint — one clear sentence a business owner would immediately understand
-2. What Is Going Well — genuine, specific, not generic praise
-3. Why We Think This — the reasoning, in plain terms, not a list of Evidence IDs
-4. How Fixing It Will Help — the business impact, in terms an owner cares about
-5. Next Steps — what happens if they want to go deeper (this is where the save/email
-   invitation lives)
+1. Primary Constraint — one clear sentence a business owner would immediately understand.
+   This card carries the product: keep it specific, concrete, and undiluted. Name the
+   category of what is constraining them with at most one concrete example — never a
+   dash-list or comma-list of two or more missing items. Maximum 32 words.
+2. What Is Going Well — genuine and specific, not generic praise. Two sentences maximum.
+   Maximum 24 words.
+3. Why We Think This — two sentences maximum. Name the CATEGORY of evidence we examined,
+   plus exactly ONE named observation as proof we really looked. If the evidence contains
+   several relevant observations, pick only the single most load-bearing one — the one
+   that most directly proves the constraint — and leave the rest out entirely, even if
+   true. Never enumerate two or more concrete deficiencies. Never produce anything a
+   reader could use as a task list or a mini-audit. Maximum 24 words.
+4. How Fixing It Will Help — the business impact, in terms an owner cares about.
+   Two sentences maximum. Maximum 24 words.
+5. Next Steps — two sentences maximum: the save/email invitation, and that the Growth
+   Report is where the full evidence, the connected constraints, and the order to act
+   come from. Maximum 24 words.
 
 Also translate Hypothesis Confidence into one honest plain-language sentence — never
-a number, a percentage, or a technical term like "Medium confidence."
+a number, a percentage, or a technical term like "Medium confidence." Maximum 16 words.
 
-Before finishing, check every card against this test: could this be handed to a
-generic freelancer to fully fix with no further involvement from us? If yes, cut it
-back — that level of detail belongs in a future Blueprint, not here.
+The Snapshot is a trailer, not the film. The reader should finish knowing WHAT is
+constraining them and trusting that we know WHY — while the full why, the connected
+constraints, and the sequence live in the Growth Report. Hold that line without
+becoming vague: the constraint itself is always named plainly, and the one proof
+point is always real and specific.
 
-Second test, sentence by sentence (Product Council Decision 003): does this
-sentence materially improve understanding, or does it contribute to confidence,
-credibility, or reasoning? If a sentence does neither — it's just restating
-something already said, or padding toward a length that feels thorough — cut it.
-This is not a target word count; a card that earns three tight sentences is
-better than one padded to five. An owner reading this on their phone should
-never feel like they're wading through anything to get to the point.
+Value ladder rule: the tier that follows this Snapshot is the Growth Report — deeper
+reasoning on this same constraint. The Growth Blueprint comes only after that, and
+Implementation after that. In Next Steps, if you mention going deeper at all, refer
+only to the Growth Report. Never mention the Blueprint or Implementation in a
+Snapshot, and never promise content that does not exist yet — invite, don't oversell.
 
-Value ladder rule (v1.1 correction): the tier that follows this Snapshot is the
-Growth Report — deeper reasoning on this same constraint. The Growth Blueprint
-comes only after that, and Implementation after that. In Next Steps, if you
-mention going deeper at all, refer only to the Growth Report. Never mention the
-Blueprint or Implementation in a Snapshot, and never promise content that does
-not exist yet — invite, don't oversell.
+Never bundle two deficiencies into one sentence, in any card — including with "or",
+"and", a slash, or a comma. For example, never write something like "no links to
+review platforms or professional body logos" or "no address or phone number." That
+reads as an audit finding, not a diagnosis, and it breaks the one-observation rule
+even though it is grammatically a single sentence. If you catch yourself joining two
+missing things with a connector word, cut one of them — pick whichever more directly
+proves the constraint.
+
+Hard limits — this is a two-pass instruction, not a final glance:
+- PASS 1 (draft): write all six fields.
+- PASS 2 (compress): count the words in each field against its maximum above, and
+  count the whole Snapshot against 150 words total (aim near 130). If any field is
+  over its own maximum, or the total exceeds 150, REWRITE the offending field(s) —
+  do not just delete words from the end; rephrase for density. A card that says less,
+  more plainly, is better than one trimmed until it reads oddly.
+- Only after Pass 2 confirms every field and the total are within limits, produce
+  the final JSON.
+- "Why We Think This" contains at most one named specific observation — see the
+  bundling rule above.
+- No lists, no enumerations, no semicolon-chained findings anywhere.
+- No sentence that tells the reader HOW to fix anything — the Snapshot diagnoses;
+  it never prescribes.
+- No mini-audit: never let the six cards together read like a checklist of findings.
+  Each card earns its place by advancing the one diagnosis, not by adding coverage.
+- Never manipulative: no artificial cliff-hangers, no "we found N issues" teaser
+  mechanics, no withholding the constraint itself.
 
 --- OUTPUT FORMAT (implementation detail, not Prompt Library text) ---
 Respond with a single JSON object, no other text:
