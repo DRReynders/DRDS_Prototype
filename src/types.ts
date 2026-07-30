@@ -102,6 +102,10 @@ export interface GrowthSnapshot {
   howFixingItWillHelp: string;
   nextSteps: string;
   confidencePlainLanguage: string; // never a number, percentage, or technical term
+  // Phase 1.1: true when Contract 4 gated the constraint and this Snapshot is
+  // the fixed "could not confirm" copy rather than a model-written finding.
+  // Additive and optional — the web UI and email read named fields only.
+  verificationRequired?: boolean;
 }
 
 // Markers in the static HTML that indicate content a direct fetch cannot see.
