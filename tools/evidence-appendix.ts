@@ -43,6 +43,64 @@ function esc(s: string): string {
   return s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ").trim();
 }
 
+// ---- Client-safe language layer (N-1) ----
+// The run log is an engineering record and says so plainly. This appendix goes
+// to a paying client. Everything below translates internal vocabulary into calm
+// client-facing language at the render boundary — the underlying evidence
+// entries, and the run log itself, are never altered.
+
+// Marker appended to evidenceValue by the Phase 1 zero/absent safety rule.
+const PHASE1_VALUE_MARKER = /\s*\[Static fetch could not verify this[^\]]*\]\s*/gi;
+// The engineering explanation appended to observation by the same rule.
+const PHASE1_DOWNGRADE = /\s*Downgraded from (?:Fail|Partial) to Indeterminate:[\s\S]*$/i;
+
+const NOT_CONFIRMED_NOTE =
+  "Could not be confirmed from the published page — this item requires separate visual verification before it is treated as a finding.";
+
+// Residual internal vocabulary. Ordered: longest / most specific first.
+const JARGON: [RegExp, string][] = [
+  [/\bthis run reads static HTML only and executes no JavaScript\b,?\s*/gi, ""],
+  [/\band the page carries markers of content rendered after load\b\s*\([^)]*\)\.?/gi, ""],
+  [/\b(?:counters|lazyImages|galleries|carousels|accordions|tabs):\s*\d+,?\s*/gi, ""],
+  [/\bAbsence in static markup is not evidence of absence for a real visitor\.?/gi,
+   "Not seeing something on the published page is not proof it is absent."],
+  [/\bstatic fetch\b/gi, "the published page"],
+  [/\bstatic markup\b/gi, "the published page"],
+  // Keep the sentence grammatical: the original reads "Direct-fetch-only run
+  // mode: <consequence>", which becomes a lowercase fragment if swapped naively.
+  [/\bDirect[- ]fetch(?:[- ]only)? run mode:\s*/gi, "In this review mode, "],
+  [/\bDirect[- ]fetch(?:[- ]only)? run mode\b/gi, "this review mode"],
+  [/\bDirect fetch\b/g, "Public page"],
+  [/\bJavaScript\b/g, "page scripting"],
+  [/\bdynamicSignals\b/g, "page behaviour"],
+  [/\(escalation\)/gi, "Additional evidence"],
+  [/\bExample H1s\b/g, "Examples"],
+];
+
+function scrubJargon(s: string): string {
+  let out = s;
+  for (const [pattern, replacement] of JARGON) out = out.replace(pattern, replacement);
+  return out.replace(/\s{2,}/g, " ").replace(/\s+([.,;])/g, "$1").trim();
+}
+
+function clientSafeValue(v: string): string {
+  return scrubJargon(v.replace(PHASE1_VALUE_MARKER, " "));
+}
+
+// Where the safety rule downgraded a finding, keep whatever the check itself
+// observed and replace the engineering rationale with one plain sentence.
+function clientSafeObservation(o: string): string {
+  if (PHASE1_DOWNGRADE.test(o)) {
+    const kept = scrubJargon(o.replace(PHASE1_DOWNGRADE, "")).trim();
+    return kept ? `${kept} ${NOT_CONFIRMED_NOTE}` : NOT_CONFIRMED_NOTE;
+  }
+  return scrubJargon(o);
+}
+
+function clientSafeLabel(s: string): string {
+  return scrubJargon(s);
+}
+
 function shortSource(source: string): string {
   const parts = source.split(/,\s*/).filter(Boolean);
   if (parts.length <= 1) return esc(source);
@@ -50,7 +108,7 @@ function shortSource(source: string): string {
 }
 
 function questionFor(e: EvidenceEntry): string {
-  return QUESTIONS[e.evidenceId] ?? `${e.growthFunction} — ${e.evidenceType}`;
+  return QUESTIONS[e.evidenceId] ?? clientSafeLabel(`${e.growthFunction} — ${e.evidenceType}`);
 }
 
 export function buildEvidenceRegister(log: RunLog): string {
@@ -81,13 +139,13 @@ export function buildEvidenceRegister(log: RunLog): string {
   }
 
   for (const [fn, group] of groups) {
-    lines.push(`### ${fn}`);
+    lines.push(`### ${clientSafeLabel(fn)}`);
     lines.push("");
-    lines.push("| ID | Check | Result | What we observed | Source | Band |");
+    lines.push("| ID | Check | Result | What we observed | Source | Availability |");
     lines.push("|---|---|---|---|---|---|");
     for (const e of group) {
       lines.push(
-        `| ${e.evidenceId} | ${esc(questionFor(e))} | ${e.resultStatus} | ${esc(e.evidenceValue)} | ${shortSource(e.source)} | ${BAND_SHORT[e.evidenceAccessibility] ?? esc(e.evidenceAccessibility)} |`
+        `| ${e.evidenceId} | ${esc(questionFor(e))} | ${e.resultStatus} | ${esc(clientSafeValue(e.evidenceValue))} | ${shortSource(clientSafeLabel(e.source))} | ${BAND_SHORT[e.evidenceAccessibility] ?? esc(e.evidenceAccessibility)} |`
       );
     }
     lines.push("");
@@ -124,7 +182,7 @@ export function buildEvidenceRegister(log: RunLog): string {
     lines.push("### Notes on items not fully assessed");
     lines.push("");
     for (const e of flagged) {
-      lines.push(`- **${e.evidenceId} (${e.resultStatus})** — ${esc(questionFor(e))}. ${esc(e.observation)}`);
+      lines.push(`- **${e.evidenceId} (${e.resultStatus})** — ${esc(questionFor(e))}. ${esc(clientSafeObservation(e.observation))}`);
     }
     lines.push("");
   }
