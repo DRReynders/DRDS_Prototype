@@ -84,3 +84,12 @@ functions with short timeouts.
   and can only fetch a page already discovered on the business's own site.
 - Sites that block automated fetching will produce thin evidence packages — reported
   honestly as Not Assessed, never guessed around.
+- **No JavaScript is executed.** The fetcher reads the HTML the server sends, not the
+  page a visitor sees. Animated counters, lazy-loaded images and galleries, carousels,
+  and content inside tabs or accordions all read as missing, empty, or zero. Two internal
+  rehearsal runs produced confident, specific, *false* findings this way — not merely thin
+  evidence, which is a different and worse failure. The Phase 1 safety patch mitigates it:
+  pages are scanned for dynamic-content markers, and an absence-or-zero finding on such a
+  page is recorded as `Indeterminate — requires rendered verification` rather than a
+  failure, with the Primary Constraint blocked from resting mainly on such evidence.
+  **Mitigation is not detection: only a rendered check confirms what a visitor sees.**

@@ -4,8 +4,76 @@
 // here; a smarter Evidence Engine over the full 119-item library comes later.
 
 import { llmJson, loadPrompt } from "../llm/client.js";
-import { allPages, corpusAsText, type SiteCorpus } from "../site.js";
-import type { EvidenceEntry, ResultStatus } from "../types.js";
+import { allPages, canonicalGroupKey, corpusAsText, type SiteCorpus } from "../site.js";
+import { hasAnyDynamicSignal, type DynamicSignals, type EvidenceEntry, type FetchedPage, type ResultStatus } from "../types.js";
+
+// --- Phase 1 (P1-b): canonical-aware page grouping ---
+
+// Collapses fetched pages to one representative per canonical target, so a site
+// that correctly canonicalises /services/ -> /seo-services/ is not accused of
+// duplicate titles for doing the right thing.
+export function distinctByCanonical(pages: FetchedPage[]): { distinct: FetchedPage[]; collapsed: number } {
+  const seen = new Map<string, FetchedPage>();
+  for (const p of pages) {
+    const key = canonicalGroupKey(p);
+    if (!seen.has(key)) seen.set(key, p);
+  }
+  return { distinct: [...seen.values()], collapsed: pages.length - seen.size };
+}
+
+// --- Phase 1 (P1-c): zero/absent safety rule ---
+
+// Language indicating the check concluded something is missing, empty, or zero.
+const ABSENCE_PATTERN =
+  /\b(no|none|not (?:present|found|visible|shown|available)|missing|absent|lacks?|lacking|without|empty|placeholder|zero)\b/i;
+const ZERO_VALUE_PATTERN = /(?:^|[^\d.,])0(?:[^\d%]|%|\s|$)|['"]0['"]/;
+
+// Which blind spots could plausibly hide the thing each check looks for.
+const RELEVANT_SIGNALS: Record<string, (keyof DynamicSignals)[]> = {
+  "E-CON-018": ["counters", "galleries", "lazyImages", "carousels"], // proof of results
+  "E-CON-017": ["carousels", "tabs", "accordions", "lazyImages"], // testimonials
+  "E-VIS-027": ["lazyImages", "galleries", "carousels"], // badges / recognition
+  "E-SCA-001": ["tabs", "accordions"], // process described in collapsed UI
+  "E-VIS-004": ["tabs", "accordions"], // NAP inside a widget
+};
+
+export function corpusDynamicSignals(corpus: SiteCorpus): DynamicSignals {
+  const total: DynamicSignals = { counters: 0, lazyImages: 0, galleries: 0, tabs: 0, accordions: 0, carousels: 0 };
+  for (const p of allPages(corpus)) {
+    for (const k of Object.keys(total) as (keyof DynamicSignals)[]) total[k] += p.dynamicSignals?.[k] ?? 0;
+  }
+  return total;
+}
+
+export function claimsAbsenceOrZero(text: string): boolean {
+  return ABSENCE_PATTERN.test(text) || ZERO_VALUE_PATTERN.test(text);
+}
+
+// The rule: static fetch may report what it saw, but it may not convert silence
+// into a confident failure when the markup says the content is rendered later.
+export function applyZeroAbsentSafetyRule(entry: EvidenceEntry, signals: DynamicSignals): EvidenceEntry {
+  if (entry.resultStatus !== "Fail" && entry.resultStatus !== "Partial") return entry;
+  if (!claimsAbsenceOrZero(entry.evidenceValue)) return entry;
+
+  const relevant = RELEVANT_SIGNALS[entry.evidenceId];
+  const triggered = relevant
+    ? relevant.filter((k) => signals[k] > 0)
+    : hasAnyDynamicSignal(signals)
+      ? (Object.keys(signals) as (keyof DynamicSignals)[]).filter((k) => signals[k] > 0)
+      : [];
+  if (triggered.length === 0) return entry;
+
+  return {
+    ...entry,
+    resultStatus: "Indeterminate",
+    evidenceValue: `${entry.evidenceValue} [Static fetch could not verify this — requires rendered verification.]`,
+    observation:
+      `${entry.observation} Downgraded from ${entry.resultStatus} to Indeterminate: this run reads static HTML only and ` +
+      `executes no JavaScript, and the page carries markers of content rendered after load (${triggered
+        .map((k) => `${k}: ${signals[k]}`)
+        .join(", ")}). Absence in static markup is not evidence of absence for a real visitor.`,
+  };
+}
 
 // Static metadata from the Evidence Library V1, for the subset only.
 const META: Record<
@@ -71,38 +139,48 @@ export function checkSsl(corpus: SiteCorpus): EvidenceEntry {
 }
 
 export function checkTitles(corpus: SiteCorpus): EvidenceEntry {
-  const pages = allPages(corpus);
-  if (!pages.length)
+  const all = allPages(corpus);
+  if (!all.length)
     return entry("E-VIS-001", "No pages could be fetched", "Not Assessed", "Direct fetch", "Fetch blocked or failed.");
+  // P1-b: compare one page per canonical target — canonicalised aliases are a
+  // correct implementation, not a duplicate-content defect.
+  const { distinct: pages, collapsed } = distinctByCanonical(all);
   const titles = pages.map((p) => p.title);
   const missing = titles.filter((t) => !t).length;
   const unique = new Set(titles.filter(Boolean)).size;
   const duplicated = unique < titles.filter(Boolean).length;
   const status: ResultStatus = missing === 0 && !duplicated ? "Pass" : missing === titles.length ? "Fail" : "Partial";
+  const canonicalNote = collapsed
+    ? ` ${collapsed} fetched URL(s) collapsed by rel="canonical" and not counted as duplicates.`
+    : "";
   return entry(
     "E-VIS-001",
     `${pages.length} pages checked: ${missing} missing titles, ${duplicated ? "duplicates present" : "all unique"}. Examples: ${titles.filter(Boolean).slice(0, 3).join(" | ")}`,
     status,
     pages.map((p) => p.finalUrl).join(", "),
-    `Checked across the ${pages.length} fetched core pages only, not the full site.`
+    `Checked across the ${pages.length} distinct fetched core pages only, not the full site.${canonicalNote}`
   );
 }
 
 export function checkMetaDescriptions(corpus: SiteCorpus): EvidenceEntry {
-  const pages = allPages(corpus);
-  if (!pages.length)
+  const all = allPages(corpus);
+  if (!all.length)
     return entry("E-VIS-002", "No pages could be fetched", "Not Assessed", "Direct fetch", "Fetch blocked or failed.");
+  const { distinct: pages, collapsed } = distinctByCanonical(all); // P1-b
   const descs = pages.map((p) => p.metaDescription);
   const missing = descs.filter((d) => !d).length;
   const unique = new Set(descs.filter(Boolean)).size;
   const duplicated = unique < descs.filter(Boolean).length;
   const status: ResultStatus = missing === 0 && !duplicated ? "Pass" : missing === descs.length ? "Fail" : "Partial";
+  const canonicalNote = collapsed
+    ? ` ${collapsed} fetched URL(s) collapsed by rel="canonical" and not counted as duplicates.`
+    : "";
   return entry(
     "E-VIS-002",
     `${pages.length} pages checked: ${missing} missing meta descriptions, ${duplicated ? "duplicates present" : "no duplicates"}.`,
     status,
     pages.map((p) => p.finalUrl).join(", "),
-    `Checked across the ${pages.length} fetched core pages only.`
+    `Checked across the ${pages.length} distinct fetched core pages only.${canonicalNote}`
   );
 }
 
@@ -138,13 +216,47 @@ export function checkCorePageCoverage(corpus: SiteCorpus): EvidenceEntry {
   for (const [name, pattern] of wanted) {
     if (discovered.some((u) => pattern.test(u))) found.push(name);
   }
-  const status: ResultStatus = found.length >= 4 ? "Pass" : found.length >= 2 ? "Partial" : "Fail";
+  let status: ResultStatus = found.length >= 4 ? "Pass" : found.length >= 2 ? "Partial" : "Fail";
+
+  // P1-c: this check matches URL *strings*, so a site using descriptive slugs
+  // (/performance-marketing-specialist/ rather than /about/) reads as missing
+  // pages it actually has. If unclassified internal links remain, the shortfall
+  // is unproven — say so rather than assert absence.
+  // Only where the check is actually ASSERTING a shortfall. A Pass makes no
+  // absence claim, so it needs no hedging — downgrading it would be noise.
+  let slugNote = "";
+  if (status !== "Pass" && found.length < wanted.length) {
+    let host = "";
+    try {
+      host = new URL(corpus.homepage.finalUrl).hostname.replace(/^www\./i, "");
+    } catch {
+      /* leave host empty — the filter below then matches nothing */
+    }
+    const unclassified = [...new Set(corpus.homepage.links)].filter((href) => {
+      try {
+        const u = new URL(href);
+        if (u.hostname.replace(/^www\./i, "") !== host) return false;
+        if (u.pathname === "/" || u.pathname === "") return false;
+        return !wanted.some(([, pattern]) => pattern.test(href));
+      } catch {
+        return false;
+      }
+    });
+    if (unclassified.length > 0) {
+      status = "Indeterminate";
+      slugNote =
+        ` ${unclassified.length} internal link(s) did not match any expected page-type pattern; this check reads URL slugs, ` +
+        `not rendered navigation, so pages using descriptive slugs may exist but be uncounted. Requires rendered verification ` +
+        `before any claim that page types are missing.`;
+    }
+  }
+
   return entry(
     "E-VIS-041",
-    `Core page types found via homepage navigation: ${found.join(", ") || "none"} (${found.length} of ${wanted.length} expected types)`,
+    `Core page types found via homepage navigation: ${found.join(", ") || "none"} (${found.length} of ${wanted.length} expected types matched by URL pattern)`,
     status,
     corpus.homepage.finalUrl,
-    "Assessed from link URLs discovered on the homepage — pages linked only from deeper navigation may be missed."
+    `Assessed from link URLs discovered on the homepage — pages linked only from deeper navigation may be missed.${slugNote}`
   );
 }
 
@@ -171,6 +283,11 @@ export async function runTextualChecks(corpus: SiteCorpus): Promise<EvidenceEntr
     { stage: "Contract 3", promptName: "evidence-textual", tier: "fast" }
   );
 
+  // P1-c: the textual checks are where absence gets asserted, because the LLM
+  // only ever sees text a direct fetch could extract. Apply the safety rule to
+  // every result before it leaves this function.
+  const signals = corpusDynamicSignals(corpus);
+
   return TEXTUAL_IDS.map((id) => {
     const r = res.results.find((x) => x.evidenceId === id);
     if (!r)
@@ -181,7 +298,7 @@ export async function runTextualChecks(corpus: SiteCorpus): Promise<EvidenceEntr
         : id === "E-SCA-001"
           ? " Publicly visible claim only — structurally self-report; cannot be independently verified here."
           : "";
-    return entry(id, r.evidenceValue, r.resultStatus, sources, r.observation + note);
+    return applyZeroAbsentSafetyRule(entry(id, r.evidenceValue, r.resultStatus, sources, r.observation + note), signals);
   });
 }
 

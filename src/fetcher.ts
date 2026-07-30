@@ -2,12 +2,53 @@
 // prototype (no search API). Every page used by any stage passes through here.
 
 import * as cheerio from "cheerio";
-import type { FetchedPage } from "./types.js";
+import { EMPTY_DYNAMIC_SIGNALS, type DynamicSignals, type FetchedPage, type PageImage } from "./types.js";
 
 const USER_AGENT =
   "DRDS-GrowthSnapshot/0.1 (+https://drdigitalsystems.co.za; automated business growth diagnostic)";
 const FETCH_TIMEOUT_MS = 20_000;
 const MAX_TEXT_CHARS = 20_000;
+const MAX_IMAGE_INVENTORY = 40; // bounded — the run log stays inspectable by hand
+
+// Phase 1 (P1-a): count markers indicating content this fetch cannot see.
+// Runs BEFORE <script> is stripped, so script-based markers (jQuery.numerator)
+// are still visible. Counting only — no interpretation happens here.
+function detectDynamicSignals($: cheerio.CheerioAPI): DynamicSignals {
+  const scriptText = $("script").text();
+  const counterEls = $("[data-to-value], .elementor-counter-number, .elementor-counter, [data-counter]").length;
+  const numeratorRefs = /jquery\.numerator|\.numerator\s*\(|data-to-value/i.test(scriptText) ? 1 : 0;
+  return {
+    counters: counterEls + (counterEls === 0 ? numeratorRefs : 0),
+    lazyImages: $('img[loading="lazy"], img[data-src], img[data-lazy-src], img[srcset], [data-bg]').length,
+    galleries: $(
+      '.gallery, .elementor-image-gallery, .elementor-gallery, [data-elementor-lightbox], [data-fancybox], .lightbox, .swiper-slide, [class*="lightbox"]'
+    ).length,
+    tabs: $('.elementor-tabs, [role="tablist"], .tabs, [data-tab]').length,
+    accordions: $(".elementor-accordion, .elementor-toggle, details, .accordion").length,
+    carousels: $('.swiper, .elementor-swiper, .slick-slider, .carousel, [data-slider]').length,
+  };
+}
+
+function collectImages($: cheerio.CheerioAPI, base: string): PageImage[] {
+  const out: PageImage[] = [];
+  $("img").each((_, el) => {
+    if (out.length >= MAX_IMAGE_INVENTORY) return;
+    const $el = $(el);
+    const raw = $el.attr("src") || $el.attr("data-src") || $el.attr("data-lazy-src") || "";
+    let src = raw;
+    try {
+      if (raw) src = new URL(raw, base).href;
+    } catch {
+      /* unparsable src — keep the raw value */
+    }
+    out.push({
+      src,
+      alt: ($el.attr("alt") ?? "").replace(/\s+/g, " ").trim(),
+      lazy: $el.attr("loading") === "lazy" || Boolean($el.attr("data-src") || $el.attr("data-lazy-src")),
+    });
+  });
+  return out;
+}
 
 // SSRF guard: this server fetches URLs submitted by strangers, so it must
 // refuse anything that could reach internal/private infrastructure.
@@ -38,7 +79,9 @@ export async function fetchPage(url: string): Promise<FetchedPage> {
     if (forbidden) {
       return {
         url, finalUrl: url, status: 0, html: "", text: "", title: "",
-        metaDescription: "", h1s: [], links: [], fetchedAt: new Date().toISOString(),
+        metaDescription: "", h1s: [], links: [], canonical: "",
+        dynamicSignals: { ...EMPTY_DYNAMIC_SIGNALS }, images: [],
+        fetchedAt: new Date().toISOString(),
         error: forbidden,
       };
     }
@@ -58,6 +101,18 @@ async function fetchPageUnchecked(url: string): Promise<FetchedPage> {
     });
     const html = await res.text();
     const $ = cheerio.load(html);
+
+    // Detected before scripts are stripped — some markers live in <script>.
+    const dynamicSignals = detectDynamicSignals($);
+    const images = collectImages($, res.url);
+    const canonicalRaw = $('link[rel="canonical"]').attr("href")?.trim() ?? "";
+    let canonical = "";
+    try {
+      if (canonicalRaw) canonical = new URL(canonicalRaw, res.url).href;
+    } catch {
+      /* unparsable canonical — treated as absent */
+    }
+
     $("script, style, noscript").remove();
 
     const links: string[] = [];
@@ -85,6 +140,9 @@ async function fetchPageUnchecked(url: string): Promise<FetchedPage> {
         .map((_, el) => $(el).text().replace(/\s+/g, " ").trim())
         .get(),
       links: [...new Set(links)],
+      canonical,
+      dynamicSignals,
+      images,
       fetchedAt,
     };
   } catch (err) {
@@ -98,6 +156,9 @@ async function fetchPageUnchecked(url: string): Promise<FetchedPage> {
       metaDescription: "",
       h1s: [],
       links: [],
+      canonical: "",
+      dynamicSignals: { ...EMPTY_DYNAMIC_SIGNALS },
+      images: [],
       fetchedAt,
       error: err instanceof Error ? err.message : String(err),
     };

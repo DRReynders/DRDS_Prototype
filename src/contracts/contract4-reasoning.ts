@@ -11,7 +11,7 @@
 import { llmJson, loadPrompt } from "../llm/client.js";
 import { requestAdditionalEvidence } from "./contract3-evidence.js";
 import type { SiteCorpus } from "../site.js";
-import { allPages } from "../site.js";
+import { allPages, isSiblingTenantUrl } from "../site.js";
 import type {
   EvidencePackage,
   EvidenceReference,
@@ -28,6 +28,8 @@ interface CderResponse {
   secondaryConstraints: string[];
   reasoningNotes: string;
   escalation: { wanted: boolean; evidenceSought: string; likelyToHelp: string };
+  // Set by the local safety gate (P1-d), never by the model.
+  constraintSafety?: ReasoningResult["constraintSafety"];
 }
 
 interface EscalationCheckResponse {
@@ -69,11 +71,46 @@ async function reason(gm: GoalModel, pkg: EvidencePackage): Promise<CderResponse
     const s = byId.get(id)?.resultStatus;
     return s !== undefined && s !== "Not Assessed" && s !== "Not Applicable";
   };
-  res.supportingEvidence = (res.supportingEvidence ?? []).filter((r) => wasActuallyAssessed(r.evidenceId));
+
+  // Phase 1 (P1-d): Indeterminate joins Not Assessed / Not Applicable as
+  // something a constraint may not lean on. An item the static layer flagged as
+  // "requires rendered verification" is precisely a check that did not conclude,
+  // so citing it as support would restate the failure this patch exists to stop.
+  const isReportSafeSupport = (id: string) => wasActuallyAssessed(id) && byId.get(id)?.resultStatus !== "Indeterminate";
+
+  const proposedSupport = res.supportingEvidence ?? [];
+  const dropped = proposedSupport.filter((r) => !isReportSafeSupport(r.evidenceId)).map((r) => r.evidenceId);
+  res.supportingEvidence = proposedSupport.filter((r) => isReportSafeSupport(r.evidenceId));
   res.contradictoryEvidence = (res.contradictoryEvidence ?? []).filter((r) => {
     const s = byId.get(r.evidenceId)?.resultStatus;
     return s === "Fail" || s === "Partial";
   });
+
+  // The safety gate. A constraint must not rest MAINLY on evidence a direct
+  // fetch cannot stand behind — "mainly", not "entirely", because a single
+  // surviving tangential item can otherwise keep a withdrawn finding alive.
+  // (Observed in replay: Lyle's false zero-metric constraint lost both of its
+  // real supports but was still propped up by an unrelated missing-NAP item.)
+  // The constraint is not silently deleted — it is kept, marked, and its
+  // confidence forced down, so the founder sees the hypothesis AND why it is
+  // unproven.
+  const mainlyUnsupported = dropped.length > res.supportingEvidence.length;
+  if (proposedSupport.length > 0 && mainlyUnsupported) {
+    res.hypothesisConfidence = "Low";
+    res.constraintSafety = {
+      status: "requires-rendered-verification",
+      reason:
+        `${dropped.length} of ${proposedSupport.length} evidence items cited in support of this constraint were ` +
+        "Indeterminate, Not Assessed, or Not Applicable — typically because the page carries content rendered after " +
+        "load that a direct fetch cannot see. This constraint is a hypothesis, not a finding, and must be confirmed " +
+        "against the live rendered page before it is reported or delivered.",
+      droppedSupportingEvidence: dropped,
+    };
+    res.reasoningNotes =
+      `[CONSTRAINT SAFETY GATE] ${dropped.length} of ${proposedSupport.length} supporting items withdrawn ` +
+      `(${dropped.join(", ") || "none cited"}); confidence forced to Low; rendered verification required before this ` +
+      `constraint may be reported. ${res.reasoningNotes ?? ""}`.trim();
+  }
   return res;
 }
 
@@ -90,7 +127,23 @@ export async function runContract4(
   // Single Confidence Escalation attempt — a branch, not a loop.
   if (first.hypothesisConfidence !== "High" && first.escalation?.wanted) {
     const fetched = new Set(allPages(corpus).map((p) => p.finalUrl));
-    const available = corpus.unfetchedCandidates.filter((u) => !fetched.has(u));
+    // Phase 1 (P1-e): same host is not the same subject. On a multi-tenant
+    // platform every business shares one domain, so the host filter alone will
+    // happily offer a competitor's profile as "additional evidence".
+    const subjectUrl = corpus.homepage.finalUrl;
+    const rejectedSiblings: string[] = [];
+    const available = corpus.unfetchedCandidates.filter((u) => {
+      if (fetched.has(u)) return false;
+      if (isSiblingTenantUrl(subjectUrl, u)) {
+        rejectedSiblings.push(u);
+        return false;
+      }
+      return true;
+    });
+    const siblingNote =
+      rejectedSiblings.length > 0
+        ? `Excluded ${rejectedSiblings.length} same-host page(s) belonging to a different business on this platform. `
+        : "";
 
     if (available.length > 0) {
       const check = await llmJson<EscalationCheckResponse>(
@@ -110,15 +163,16 @@ export async function runContract4(
 
         const gathered = await requestAdditionalEvidence(pkg, check.urlToFetch, check.evidenceSought);
         finalPkg = gathered.pkg;
-        escalationTrace.outcome = gathered.outcome;
+        escalationTrace.outcome = siblingNote + gathered.outcome;
 
         finalResponse = await reason(gm, finalPkg);
         escalationTrace.confidenceAfter = finalResponse.hypothesisConfidence;
       } else {
-        escalationTrace.outcome = `Escalation considered but not attempted: ${check.reasoning}`;
+        escalationTrace.outcome = `${siblingNote}Escalation considered but not attempted: ${check.reasoning}`;
       }
     } else {
       escalationTrace.outcome =
+        siblingNote +
         "Escalation wanted, but no additional publicly observable page was reachable in this run mode — concluded honestly with available evidence.";
     }
   }
@@ -141,6 +195,9 @@ export async function runContract4(
       contradictoryEvidence: finalResponse.contradictoryEvidence,
       secondaryConstraints: finalResponse.secondaryConstraints ?? [],
       reasoningNotes: (finalResponse.reasoningNotes ?? "") + escalationNote,
+      // P1-d: the gate's verdict must reach the run log and the report, or the
+      // whole guard is invisible to the founder.
+      ...(finalResponse.constraintSafety ? { constraintSafety: finalResponse.constraintSafety } : {}),
     },
     pkg: finalPkg,
     escalationTrace,

@@ -84,6 +84,14 @@ export interface ReasoningResult {
   contradictoryEvidence: EvidenceReference[]; // empty means "checked, found none"
   secondaryConstraints: string[];
   reasoningNotes: string; // internal / audit-only, never customer-facing
+  // Set by the Contract 4 safety gate (Phase 1, P1-d) when the proposed
+  // constraint could not be supported by evidence a direct fetch can stand
+  // behind. Additive and optional — absent means the gate found nothing wrong.
+  constraintSafety?: {
+    status: "requires-rendered-verification";
+    reason: string;
+    droppedSupportingEvidence: string[];
+  };
 }
 
 // Contract 5 — Growth Snapshot
@@ -94,6 +102,26 @@ export interface GrowthSnapshot {
   howFixingItWillHelp: string;
   nextSteps: string;
   confidencePlainLanguage: string; // never a number, percentage, or technical term
+}
+
+// Markers in the static HTML that indicate content a direct fetch cannot see.
+// Static fetch executes no JavaScript, so a counter that animates from 0, a
+// lazy-loaded gallery, or a closed accordion all read as absent. These counts
+// let the static layer declare its own blind spots rather than report silence
+// as absence (Rendered Fetcher Phase 1, P1-a).
+export interface DynamicSignals {
+  counters: number; // data-to-value / elementor-counter-number / jQuery.numerator
+  lazyImages: number; // loading="lazy" / data-src / srcset
+  galleries: number; // gallery / lightbox / swiper-slide markers
+  tabs: number;
+  accordions: number;
+  carousels: number;
+}
+
+export interface PageImage {
+  src: string;
+  alt: string;
+  lazy: boolean;
 }
 
 // A fetched page — the raw material evidence checks work from.
@@ -107,8 +135,24 @@ export interface FetchedPage {
   metaDescription: string;
   h1s: string[];
   links: string[]; // absolute URLs found on the page
+  canonical: string; // rel="canonical" resolved absolute; "" when absent
+  dynamicSignals: DynamicSignals;
+  images: PageImage[]; // bounded inventory — static fetch sees markup, not pixels
   fetchedAt: string;
   error?: string;
+}
+
+export const EMPTY_DYNAMIC_SIGNALS: DynamicSignals = {
+  counters: 0,
+  lazyImages: 0,
+  galleries: 0,
+  tabs: 0,
+  accordions: 0,
+  carousels: 0,
+};
+
+export function hasAnyDynamicSignal(s: DynamicSignals): boolean {
+  return s.counters + s.lazyImages + s.galleries + s.tabs + s.accordions + s.carousels > 0;
 }
 
 // Per-stage developer observability record (orchestrator-level only — the

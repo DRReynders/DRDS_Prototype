@@ -34,6 +34,16 @@ For "evidenceValue", quote or closely paraphrase what was actually observed,
 including where it was seen (which page). Distinguish "checked and absent" (Fail)
 from "could not check" (Not Assessed) — these are different findings.
 
+The page text you are given is extracted from raw HTML with no JavaScript
+executed. Anything a site renders after load — animated number counters,
+lazy-loaded images and galleries, carousels, and content inside tabs or
+accordions — will appear missing, empty, or as a literal zero even when a real
+visitor plainly sees it. Never report such content as absent, broken, or
+zero-valued on the strength of this text alone. Where a value reads as zero or
+an expected element seems missing, and it is the kind of content commonly
+rendered after load, use "Indeterminate" and say the static text could not
+confirm it. Absence in this text is not evidence of absence for a visitor.
+
 --- OUTPUT FORMAT ---
 Respond with a single JSON object, no other text:
 {

@@ -34,6 +34,47 @@ export function canonicalKey(href: string): string {
   return `${host}${path}${u.search}`;
 }
 
+// Phase 1 (P1-b): identity of a page for duplicate-detection purposes, honouring
+// the site's own rel="canonical". Two paths that both canonicalise to one URL are
+// the same page deliberately declared — not a duplicate-content defect. Canonical
+// is only known after fetching, so this is applied at check time, not crawl time.
+export function canonicalGroupKey(page: FetchedPage): string {
+  const target = page.canonical || page.finalUrl || page.url;
+  try {
+    return canonicalKey(target);
+  } catch {
+    return target;
+  }
+}
+
+// Phase 1 (P1-e): same-host is NOT same-subject. On multi-tenant platforms
+// (Booksy, directories, marketplaces) every business lives on one domain, so the
+// existing host filter happily admits a competitor's profile. Detects the common
+// "<numeric-id>_<slug>" tenant-profile segment and rejects a candidate whose
+// tenant id differs from the subject's. Deliberately narrow: a safety guard, not
+// a general platform-profile solution.
+const TENANT_SEGMENT = /^(\d{3,})[_-]/;
+
+function tenantIdOf(url: string): string | null {
+  try {
+    for (const seg of new URL(url).pathname.split("/")) {
+      const m = TENANT_SEGMENT.exec(seg);
+      if (m) return m[1];
+    }
+  } catch {
+    /* unparsable — treated as no tenant id */
+  }
+  return null;
+}
+
+export function isSiblingTenantUrl(subjectUrl: string, candidateUrl: string): boolean {
+  const subjectId = tenantIdOf(subjectUrl);
+  if (!subjectId) return false; // subject isn't a tenant profile — rule doesn't apply
+  const candidateId = tenantIdOf(candidateUrl);
+  if (!candidateId) return false; // candidate is a platform page, not a sibling business
+  return candidateId !== subjectId;
+}
+
 export async function collectSiteCorpus(homepage: FetchedPage): Promise<SiteCorpus> {
   const origin = new URL(homepage.finalUrl).origin;
   const host = new URL(homepage.finalUrl).hostname.replace(/^www\./i, "");
