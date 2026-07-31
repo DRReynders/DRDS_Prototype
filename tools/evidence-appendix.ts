@@ -176,7 +176,11 @@ export function buildEvidenceRegister(log: RunLog): string {
 
   // Honest-limits notes for anything not cleanly assessed.
   const flagged = entries.filter((e) =>
-    ["Not Assessed", "Indeterminate", "Partial", "Not Applicable"].includes(e.resultStatus)
+    // Area D: "Requires Browser Confirmation" must appear here. Omitting it would
+    // let an unconfirmed third-party embed read as a settled result.
+    ["Not Assessed", "Indeterminate", "Partial", "Not Applicable", "Requires Browser Confirmation"].includes(
+      e.resultStatus
+    )
   );
   if (flagged.length) {
     lines.push("### Notes on items not fully assessed");

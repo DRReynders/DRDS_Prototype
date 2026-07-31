@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head><title>Embedded review + map fixture</title></head>
+<body>
+<!-- Reproduces the iSmile page shape. The Elfsight Google Reviews widget is
+     configured, but it ships as ESCAPED markup inside the page-builder payload
+     rather than as live DOM: the container below is empty and zero-height, and
+     platform.js is never injected. A visitor in normal Chrome sees 343 reviews
+     at 4.8; every automated layer here sees nothing. -->
+<h1>About the practice</h1>
+<p>Two short testimonials sit here as hand-typed text.</p>
+
+<div class="grid-embed" style="height:0"></div>
+
+<script type="application/json">
+{"blocks":{"zz4CGA":{"type":"GridEmbed","content":"&lt;!-- Elfsight Google Reviews | Untitled Google Reviews --&gt;\n&lt;script src=\"https://static.elfsight.com/platform/platform.js\" async&gt;&lt;/script&gt;\n&lt;div class=\"elfsight-app-aeff3729-d8bb-43f1-9de5-f9ba874d32eb\"&gt;&lt;/div&gt;"}}}
+</script>
+
+<!-- Location section: a generic Maps text-search embed, not a place pin. -->
+<iframe src="https://maps.google.com/maps?q=ismile%20dental&amp;t=m&amp;z=13&amp;ie=UTF8&amp;output=embed" title="map"></iframe>
+</body>
+</html>

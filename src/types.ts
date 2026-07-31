@@ -9,7 +9,15 @@ export type ResultStatus =
   | "Partial"
   | "Not Applicable"
   | "Not Assessed"
-  | "Indeterminate";
+  | "Indeterminate"
+  // Bounded Patch Area D. Stronger and more specific than Indeterminate: the
+  // content this check looked for is delivered by a third-party embed that no
+  // automated layer here can execute, so only a consumer browser (or a
+  // screenshot) can settle it. On the iSmile rehearsal a Google Reviews widget
+  // showing 343 reviews rendered normally in Chrome while static fetch, the
+  // Phase 2 rendered fetch and an automated browser all reported it absent.
+  // An absence in this state is a TOOLING LIMITATION, never a website defect.
+  | "Requires Browser Confirmation";
 
 export type EvidenceAccessibility =
   | "Publicly Observable"
@@ -120,6 +128,33 @@ export interface DynamicSignals {
   tabs: number;
   accordions: number;
   carousels: number;
+  // Area D: third-party embed containers. Distinct from the markers above —
+  // those hide content the site itself renders late, this one hides content a
+  // different origin renders entirely. No amount of local rendering resolves it.
+  embeds: number;
+}
+
+// Area D: which third-party embed families were found, so a downgrade can name
+// the marker rather than gesture at "some widget". Counting only — no
+// interpretation, and never evidence that the widget did or did not render.
+export interface EmbedSignals {
+  iframes: number;
+  reviewWidgets: number; // elfsight, trustindex, embedsocial, featurable, reviewsonmywebsite
+  mapEmbeds: number; // maps.google.com, google.com/maps/embed
+  scriptEmbeds: number; // <script src> pointing at a known widget host
+  markers: string[]; // bounded, e.g. ["elfsight", "maps.google.com"]
+}
+
+export const EMPTY_EMBED_SIGNALS: EmbedSignals = {
+  iframes: 0,
+  reviewWidgets: 0,
+  mapEmbeds: 0,
+  scriptEmbeds: 0,
+  markers: [],
+};
+
+export function hasReviewOrMapEmbed(e: EmbedSignals): boolean {
+  return e.reviewWidgets + e.mapEmbeds + e.scriptEmbeds + e.iframes > 0;
 }
 
 export interface PageImage {
@@ -179,6 +214,9 @@ export interface FetchedPage {
   // for it. Optional so every existing FetchedPage construction site stays valid
   // (same additive pattern as constraintSafety / verificationRequired).
   pageLinks?: PageLink[];
+  // Area D: third-party embed markers found in this page's markup. Optional for
+  // the same reason.
+  embedSignals?: EmbedSignals;
   fetchedAt: string;
   error?: string;
 }
@@ -190,10 +228,11 @@ export const EMPTY_DYNAMIC_SIGNALS: DynamicSignals = {
   tabs: 0,
   accordions: 0,
   carousels: 0,
+  embeds: 0,
 };
 
 export function hasAnyDynamicSignal(s: DynamicSignals): boolean {
-  return s.counters + s.lazyImages + s.galleries + s.tabs + s.accordions + s.carousels > 0;
+  return s.counters + s.lazyImages + s.galleries + s.tabs + s.accordions + s.carousels + s.embeds > 0;
 }
 
 // Per-stage developer observability record (orchestrator-level only — the

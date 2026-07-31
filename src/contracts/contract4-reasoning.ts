@@ -76,7 +76,14 @@ async function reason(gm: GoalModel, pkg: EvidencePackage): Promise<CderResponse
   // something a constraint may not lean on. An item the static layer flagged as
   // "requires rendered verification" is precisely a check that did not conclude,
   // so citing it as support would restate the failure this patch exists to stop.
-  const isReportSafeSupport = (id: string) => wasActuallyAssessed(id) && byId.get(id)?.resultStatus !== "Indeterminate";
+  //
+  // Area D: Requires Browser Confirmation joins them, and for a sharper reason.
+  // Those items concern content a third-party embed draws from another origin,
+  // which nothing in this run can execute. A constraint resting on one would be
+  // asserting the absence of something we have no means of seeing.
+  const UNSAFE_AS_SUPPORT: ReadonlySet<string> = new Set(["Indeterminate", "Requires Browser Confirmation"]);
+  const isReportSafeSupport = (id: string) =>
+    wasActuallyAssessed(id) && !UNSAFE_AS_SUPPORT.has(byId.get(id)?.resultStatus ?? "");
 
   const proposedSupport = res.supportingEvidence ?? [];
   const dropped = proposedSupport.filter((r) => !isReportSafeSupport(r.evidenceId)).map((r) => r.evidenceId);
@@ -101,9 +108,10 @@ async function reason(gm: GoalModel, pkg: EvidencePackage): Promise<CderResponse
       status: "requires-rendered-verification",
       reason:
         `${dropped.length} of ${proposedSupport.length} evidence items cited in support of this constraint were ` +
-        "Indeterminate, Not Assessed, or Not Applicable — typically because the page carries content rendered after " +
-        "load that a direct fetch cannot see. This constraint is a hypothesis, not a finding, and must be confirmed " +
-        "against the live rendered page before it is reported or delivered.",
+        "Indeterminate, Requires Browser Confirmation, Not Assessed, or Not Applicable — typically because the page " +
+        "carries content rendered after load, or supplied by a third-party embed, that a direct fetch cannot see. " +
+        "This constraint is a hypothesis, not a finding, and must be confirmed against the live rendered page — in a " +
+        "consumer browser where a third-party embed is involved — before it is reported or delivered.",
       droppedSupportingEvidence: dropped,
     };
     res.reasoningNotes =

@@ -54,7 +54,9 @@ function assemble(log: RunLog, sourceFile: string): string {
   const name = cip!.businessName || "(business name unresolved)";
   const passes = entries.filter((e) => e.resultStatus === "Pass");
   const flagged = entries.filter((e) =>
-    ["Not Assessed", "Indeterminate", "Partial"].includes(e.resultStatus)
+    // Area D: "Requires Browser Confirmation" belongs in the limitations set —
+    // it is an open question about third-party embedded content, not a finding.
+    ["Not Assessed", "Indeterminate", "Partial", "Requires Browser Confirmation"].includes(e.resultStatus)
   );
   const byId = new Map(entries.map((e) => [e.evidenceId, e]));
 

@@ -37,6 +37,8 @@ const RESULT_CLASS: Record<string, string> = {
   "Not Assessed": "r-na",
   Indeterminate: "r-na",
   "Not Applicable": "r-na",
+  // Area D: renders as unresolved, never as a Fail.
+  "Requires Browser Confirmation": "r-na",
 };
 
 // ---------- block parser ----------

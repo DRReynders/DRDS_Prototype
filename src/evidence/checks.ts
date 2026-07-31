@@ -5,7 +5,16 @@
 
 import { llmJson, loadPrompt } from "../llm/client.js";
 import { allPages, canonicalGroupKey, corpusAsText, type SiteCorpus } from "../site.js";
-import { hasAnyDynamicSignal, type DynamicSignals, type EvidenceEntry, type FetchedPage, type ResultStatus } from "../types.js";
+import {
+  EMPTY_EMBED_SIGNALS,
+  hasAnyDynamicSignal,
+  hasReviewOrMapEmbed,
+  type DynamicSignals,
+  type EmbedSignals,
+  type EvidenceEntry,
+  type FetchedPage,
+  type ResultStatus,
+} from "../types.js";
 
 // --- Phase 1 (P1-b): canonical-aware page grouping ---
 
@@ -30,17 +39,48 @@ const ZERO_VALUE_PATTERN = /(?:^|[^\d.,])0(?:[^\d%]|%|\s|$)|['"]0['"]/;
 
 // Which blind spots could plausibly hide the thing each check looks for.
 const RELEVANT_SIGNALS: Record<string, (keyof DynamicSignals)[]> = {
-  "E-CON-018": ["counters", "galleries", "lazyImages", "carousels"], // proof of results
-  "E-CON-017": ["carousels", "tabs", "accordions", "lazyImages"], // testimonials
-  "E-VIS-027": ["lazyImages", "galleries", "carousels"], // badges / recognition
+  "E-CON-018": ["counters", "galleries", "lazyImages", "carousels", "embeds"], // proof of results
+  "E-CON-017": ["carousels", "tabs", "accordions", "lazyImages", "embeds"], // testimonials
+  "E-VIS-027": ["lazyImages", "galleries", "carousels", "embeds"], // badges / recognition
   "E-SCA-001": ["tabs", "accordions"], // process described in collapsed UI
-  "E-VIS-004": ["tabs", "accordions"], // NAP inside a widget
+  "E-VIS-004": ["tabs", "accordions", "embeds"], // NAP inside a widget or map embed
 };
 
 export function corpusDynamicSignals(corpus: SiteCorpus): DynamicSignals {
-  const total: DynamicSignals = { counters: 0, lazyImages: 0, galleries: 0, tabs: 0, accordions: 0, carousels: 0 };
+  const total: DynamicSignals = {
+    counters: 0, lazyImages: 0, galleries: 0, tabs: 0, accordions: 0, carousels: 0, embeds: 0,
+  };
   for (const p of allPages(corpus)) {
     for (const k of Object.keys(total) as (keyof DynamicSignals)[]) total[k] += p.dynamicSignals?.[k] ?? 0;
+  }
+  return total;
+}
+
+// --- Area D: third-party embed / browser confirmation rule ---
+
+// Checks whose subject matter is routinely delivered by a third-party widget:
+// reviews, testimonials, ratings, trust badges, proof of results, map/location.
+// For these, "absent from the markup we can read" and "absent from the page a
+// visitor sees" are different claims, and only a browser can tell them apart.
+const EMBED_SENSITIVE_IDS = new Set([
+  "E-CON-017", // testimonials / reviews
+  "E-CON-018", // case studies / before-after / outcome proof
+  "E-VIS-027", // credibility badges / third-party recognition
+  "E-VIS-018", // GBP claimed/active
+  "E-VIS-037", // GBP verified
+  "E-VIS-020", // GBP review volume/recency
+]);
+
+export function corpusEmbedSignals(corpus: SiteCorpus): EmbedSignals {
+  const total: EmbedSignals = { ...EMPTY_EMBED_SIGNALS, markers: [] };
+  for (const p of allPages(corpus)) {
+    const e = p.embedSignals;
+    if (!e) continue;
+    total.iframes += e.iframes;
+    total.reviewWidgets += e.reviewWidgets;
+    total.mapEmbeds += e.mapEmbeds;
+    total.scriptEmbeds += e.scriptEmbeds;
+    for (const m of e.markers) if (!total.markers.includes(m)) total.markers.push(m);
   }
   return total;
 }
@@ -51,9 +91,35 @@ export function claimsAbsenceOrZero(text: string): boolean {
 
 // The rule: static fetch may report what it saw, but it may not convert silence
 // into a confident failure when the markup says the content is rendered later.
-export function applyZeroAbsentSafetyRule(entry: EvidenceEntry, signals: DynamicSignals): EvidenceEntry {
+//
+// Area D adds a second, stronger outcome. Where the missing thing is the kind a
+// third-party widget supplies AND embed markers are present, the honest verdict
+// is not "we could not verify locally" (Indeterminate) but "only a browser can
+// settle this" (Requires Browser Confirmation) — because no amount of local
+// rendering will ever resolve content another origin draws. Checked first: it is
+// the more specific diagnosis, and it must not be masked by a lazy-image match.
+export function applyZeroAbsentSafetyRule(
+  entry: EvidenceEntry,
+  signals: DynamicSignals,
+  embeds: EmbedSignals = EMPTY_EMBED_SIGNALS
+): EvidenceEntry {
   if (entry.resultStatus !== "Fail" && entry.resultStatus !== "Partial") return entry;
   if (!claimsAbsenceOrZero(entry.evidenceValue)) return entry;
+
+  if (EMBED_SENSITIVE_IDS.has(entry.evidenceId) && hasReviewOrMapEmbed(embeds)) {
+    const named = embeds.markers.length ? embeds.markers.join(", ") : "third-party embed container";
+    return {
+      ...entry,
+      resultStatus: "Requires Browser Confirmation",
+      evidenceValue: `${entry.evidenceValue} [Not confirmed — this content is supplied by a third-party embed and requires consumer-browser confirmation.]`,
+      observation:
+        `${entry.observation} Reclassified from ${entry.resultStatus} to Requires Browser Confirmation: the page carries ` +
+        `third-party embed markers (${named}) of the kind that deliver reviews, ratings or maps from another origin. ` +
+        `No layer in this run executes them, so their content cannot be observed here. This is a limitation of our ` +
+        `tooling, NOT a defect of the website: it must not be reported as missing without a consumer-browser check or ` +
+        `a screenshot, and a paid report must carry that screenshot where the point is load-bearing.`,
+    };
+  }
 
   const relevant = RELEVANT_SIGNALS[entry.evidenceId];
   const triggered = relevant
@@ -287,7 +353,7 @@ export async function runTextualChecks(corpus: SiteCorpus): Promise<EvidenceEntr
   // only ever sees text a direct fetch could extract. Apply the safety rule to
   // every result before it leaves this function.
   const signals = corpusDynamicSignals(corpus);
-
+  const embeds = corpusEmbedSignals(corpus); // Area D
   return TEXTUAL_IDS.map((id) => {
     const r = res.results.find((x) => x.evidenceId === id);
     if (!r)
@@ -298,7 +364,11 @@ export async function runTextualChecks(corpus: SiteCorpus): Promise<EvidenceEntr
         : id === "E-SCA-001"
           ? " Publicly visible claim only — structurally self-report; cannot be independently verified here."
           : "";
-    return applyZeroAbsentSafetyRule(entry(id, r.evidenceValue, r.resultStatus, sources, r.observation + note), signals);
+    return applyZeroAbsentSafetyRule(
+      entry(id, r.evidenceValue, r.resultStatus, sources, r.observation + note),
+      signals,
+      embeds
+    );
   });
 }
 

@@ -17,6 +17,7 @@ import {
   corpusDynamicSignals,
   distinctByCanonical,
 } from "../src/evidence/checks.js";
+import { detectEmbedSignals } from "../src/fetcher.js";
 import { isSiblingTenantUrl } from "../src/site.js";
 import type { SiteCorpus } from "../src/site.js";
 import { EMPTY_DYNAMIC_SIGNALS, type DynamicSignals, type EvidenceEntry, type FetchedPage } from "../src/types.js";
@@ -37,6 +38,9 @@ function pageFromFixture(file: string, finalUrl: string): FetchedPage {
   const scriptText = $("script").text();
   const counterEls = $("[data-to-value], .elementor-counter-number, .elementor-counter, [data-counter]").length;
   const numeratorRefs = /jquery\.numerator|\.numerator\s*\(|data-to-value/i.test(scriptText) ? 1 : 0;
+  // Area D: use the real embed detector rather than mirroring it, so this fixture
+  // helper cannot drift from shipped behaviour on the embed path at least.
+  const embedSignals = detectEmbedSignals($, html);
   const dynamicSignals: DynamicSignals = {
     counters: counterEls + (counterEls === 0 ? numeratorRefs : 0),
     lazyImages: $('img[loading="lazy"], img[data-src], img[data-lazy-src], img[srcset], [data-bg]').length,
@@ -46,6 +50,7 @@ function pageFromFixture(file: string, finalUrl: string): FetchedPage {
     tabs: $('.elementor-tabs, [role="tablist"], .tabs, [data-tab]').length,
     accordions: $(".elementor-accordion, .elementor-toggle, details, .accordion").length,
     carousels: $('.swiper, .elementor-swiper, .slick-slider, .carousel, [data-slider]').length,
+    embeds: embedSignals.iframes + embedSignals.reviewWidgets + embedSignals.mapEmbeds + embedSignals.scriptEmbeds,
   };
   const canonicalRaw = $('link[rel="canonical"]').attr("href")?.trim() ?? "";
   let canonical = "";
@@ -78,6 +83,7 @@ function pageFromFixture(file: string, finalUrl: string): FetchedPage {
     canonical,
     dynamicSignals,
     images: [],
+    embedSignals,
     fetchedAt: new Date().toISOString(),
   };
 }

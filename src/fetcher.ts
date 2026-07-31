@@ -4,7 +4,9 @@
 import * as cheerio from "cheerio";
 import {
   EMPTY_DYNAMIC_SIGNALS,
+  EMPTY_EMBED_SIGNALS,
   type DynamicSignals,
+  type EmbedSignals,
   type FetchedPage,
   type LinkType,
   type PageImage,
@@ -22,7 +24,11 @@ const MAX_LINK_TEXT_CHARS = 120;
 // Phase 1 (P1-a): count markers indicating content this fetch cannot see.
 // Runs BEFORE <script> is stripped, so script-based markers (jQuery.numerator)
 // are still visible. Counting only — no interpretation happens here.
-function detectDynamicSignals($: cheerio.CheerioAPI): DynamicSignals {
+// Phase 1 (P1-a) + Area D: count markers indicating content this fetch cannot
+// see. Runs BEFORE <script> is stripped — essential for both the counter markers
+// and the embed ones, since a page builder often ships the whole widget as
+// escaped markup inside a script/JSON payload rather than as live DOM.
+function detectDynamicSignals($: cheerio.CheerioAPI, embeds: EmbedSignals): DynamicSignals {
   const scriptText = $("script").text();
   const counterEls = $("[data-to-value], .elementor-counter-number, .elementor-counter, [data-counter]").length;
   const numeratorRefs = /jquery\.numerator|\.numerator\s*\(|data-to-value/i.test(scriptText) ? 1 : 0;
@@ -35,7 +41,59 @@ function detectDynamicSignals($: cheerio.CheerioAPI): DynamicSignals {
     tabs: $('.elementor-tabs, [role="tablist"], .tabs, [data-tab]').length,
     accordions: $(".elementor-accordion, .elementor-toggle, details, .accordion").length,
     carousels: $('.swiper, .elementor-swiper, .slick-slider, .carousel, [data-slider]').length,
+    embeds: embeds.iframes + embeds.reviewWidgets + embeds.mapEmbeds + embeds.scriptEmbeds,
   };
+}
+
+// Area D: third-party embed families whose content is rendered by another origin.
+// The iSmile widget shipped as escaped HTML inside the Zyro grid payload — the
+// live DOM held only an empty zero-height container — so the raw markup is
+// searched as text, not just queried as DOM.
+const REVIEW_WIDGET_MARKERS = [
+  "elfsight",
+  "static.elfsight.com",
+  "trustindex",
+  "embedsocial",
+  "featurable",
+  "reviewsonmywebsite",
+  "sociablekit",
+  "google reviews",
+  "google-reviews",
+];
+const MAP_EMBED_MARKERS = ["maps.google.com", "google.com/maps/embed", "maps.googleapis.com", "google.com/maps"];
+const WIDGET_SCRIPT_HOSTS =
+  /<script[^>]+src=["'][^"']*(elfsight|trustindex|embedsocial|featurable|reviewsonmywebsite|sociablekit|widget)[^"']*["']/gi;
+const MAX_EMBED_MARKERS = 12;
+
+export function detectEmbedSignals($: cheerio.CheerioAPI, html: string): EmbedSignals {
+  const hay = html.toLowerCase();
+  const markers: string[] = [];
+  const note = (m: string): void => {
+    if (markers.length < MAX_EMBED_MARKERS && !markers.includes(m)) markers.push(m);
+  };
+
+  const iframes = $("iframe").length;
+  if (iframes > 0) note("iframe");
+
+  let reviewWidgets = 0;
+  for (const m of REVIEW_WIDGET_MARKERS) {
+    if (hay.includes(m)) {
+      reviewWidgets++;
+      note(m);
+    }
+  }
+
+  let mapEmbeds = 0;
+  for (const m of MAP_EMBED_MARKERS) {
+    if (hay.includes(m)) {
+      mapEmbeds++;
+      note(m);
+    }
+  }
+
+  const scriptEmbeds = (html.match(WIDGET_SCRIPT_HOSTS) ?? []).length;
+
+  return { iframes, reviewWidgets, mapEmbeds, scriptEmbeds, markers };
 }
 
 function collectImages($: cheerio.CheerioAPI, base: string): PageImage[] {
@@ -200,6 +258,7 @@ export async function fetchPage(url: string): Promise<FetchedPage> {
         url, finalUrl: url, status: 0, html: "", text: "", title: "",
         metaDescription: "", h1s: [], links: [], canonical: "",
         dynamicSignals: { ...EMPTY_DYNAMIC_SIGNALS }, images: [], pageLinks: [],
+        embedSignals: { ...EMPTY_EMBED_SIGNALS, markers: [] },
         fetchedAt: new Date().toISOString(),
         error: forbidden,
       };
@@ -222,7 +281,8 @@ async function fetchPageUnchecked(url: string): Promise<FetchedPage> {
     const $ = cheerio.load(html);
 
     // Detected before scripts are stripped — some markers live in <script>.
-    const dynamicSignals = detectDynamicSignals($);
+    const embedSignals = detectEmbedSignals($, html);
+    const dynamicSignals = detectDynamicSignals($, embedSignals);
     const images = collectImages($, res.url);
     const canonicalRaw = $('link[rel="canonical"]').attr("href")?.trim() ?? "";
     let canonical = "";
@@ -269,6 +329,7 @@ async function fetchPageUnchecked(url: string): Promise<FetchedPage> {
       dynamicSignals,
       images,
       pageLinks,
+      embedSignals,
       fetchedAt,
     };
   } catch (err) {
@@ -286,6 +347,7 @@ async function fetchPageUnchecked(url: string): Promise<FetchedPage> {
       dynamicSignals: { ...EMPTY_DYNAMIC_SIGNALS },
       images: [],
       pageLinks: [],
+      embedSignals: { ...EMPTY_EMBED_SIGNALS, markers: [] },
       fetchedAt,
       error: err instanceof Error ? err.message : String(err),
     };

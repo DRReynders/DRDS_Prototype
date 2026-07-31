@@ -18,13 +18,24 @@ import { llmJson, loadPrompt } from "../llm/client.js";
 import type { SiteCorpus } from "../site.js";
 import type { EvidenceEntry, EvidencePackage, ResultStatus } from "../types.js";
 
+// Area D: "Requires Browser Confirmation" joins Not Assessed / Not Applicable as
+// unresolved. It is an open question about a third-party embed, not a result —
+// counting it as assessed would inflate coverage on exactly the checks the embed
+// rule exists to hold open.
 function aggregateCoverage(entries: EvidenceEntry[]): string {
-  const assessed = entries.filter(
-    (e) => e.resultStatus !== "Not Assessed" && e.resultStatus !== "Not Applicable"
-  ).length;
+  const unresolved: EvidenceEntry["resultStatus"][] = [
+    "Not Assessed",
+    "Not Applicable",
+    "Requires Browser Confirmation",
+  ];
+  const assessed = entries.filter((e) => !unresolved.includes(e.resultStatus)).length;
+  const awaitingBrowser = entries.filter((e) => e.resultStatus === "Requires Browser Confirmation").length;
   const total = entries.length;
   const label = assessed >= total * 0.75 ? "Substantial" : assessed >= total * 0.4 ? "Partial" : "Thin";
-  return `${label} — ${assessed} of ${total} evidence items could actually be assessed; the rest are honestly recorded as Not Assessed.`;
+  const browserNote = awaitingBrowser
+    ? ` ${awaitingBrowser} of those await consumer-browser confirmation of third-party embedded content and must not be reported as absent.`
+    : "";
+  return `${label} — ${assessed} of ${total} evidence items could actually be assessed; the rest are honestly recorded as Not Assessed.${browserNote}`;
 }
 
 export async function runContract3(corpus: SiteCorpus): Promise<EvidencePackage> {
