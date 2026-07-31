@@ -3,6 +3,7 @@
 // ranking, or dynamic choice of evidence items is future work — do not add it
 // here; a smarter Evidence Engine over the full 119-item library comes later.
 
+import { findRepeatedLabelConflicts } from "../fetcher.js";
 import { llmJson, loadPrompt } from "../llm/client.js";
 import { allPages, canonicalGroupKey, corpusAsText, type SiteCorpus } from "../site.js";
 import {
@@ -13,6 +14,8 @@ import {
   type EmbedSignals,
   type EvidenceEntry,
   type FetchedPage,
+  type PageForm,
+  type PageLink,
   type ResultStatus,
 } from "../types.js";
 
@@ -44,6 +47,14 @@ const RELEVANT_SIGNALS: Record<string, (keyof DynamicSignals)[]> = {
   "E-VIS-027": ["lazyImages", "galleries", "carousels", "embeds"], // badges / recognition
   "E-SCA-001": ["tabs", "accordions"], // process described in collapsed UI
   "E-VIS-004": ["tabs", "accordions", "embeds"], // NAP inside a widget or map embed
+  // Area A1. Conversion controls are routinely injected client-side — on iSmile
+  // the WhatsApp hrefs were absent from the static HTML entirely and only
+  // appeared once JavaScript ran. A static "no WhatsApp route" claim is exactly
+  // the false negative this rule exists to stop.
+  "E-CON-101": ["embeds", "tabs", "accordions"],
+  "E-CON-102": ["embeds", "tabs", "accordions"],
+  "E-CON-103": ["embeds", "tabs", "accordions"],
+  "E-RES-101": ["embeds", "tabs", "accordions"],
 };
 
 export function corpusDynamicSignals(corpus: SiteCorpus): DynamicSignals {
@@ -159,6 +170,11 @@ const META: Record<
   "E-VIS-037": { growthFunction: "Discoverability", evidenceType: "Observation", question: "Google Business Profile verified" },
   "E-VIS-020": { growthFunction: "Credibility / Advocacy", evidenceType: "Observation", question: "Healthy volume of recent GBP reviews" },
   "E-SCA-001": { growthFunction: "Retention", evidenceType: "Interview (checked here as public claim only)", question: "Structured client retention process (as publicly claimed)" },
+  // Area A1 — Capture / Response. Mechanical, deterministic, no LLM cost.
+  "E-CON-101": { growthFunction: "Capture", evidenceType: "Observation", question: "Primary CTA present, working, and consistent across core pages" },
+  "E-CON-102": { growthFunction: "Capture", evidenceType: "Observation", question: "Conversion destinations reachable and internally consistent" },
+  "E-CON-103": { growthFunction: "Capture", evidenceType: "Observation", question: "Contact form present with a usable field set" },
+  "E-RES-101": { growthFunction: "Response", evidenceType: "Observation", question: "Visible response promise and breadth of response channels" },
 };
 
 const TEXTUAL_IDS = ["E-VIS-004", "E-VIS-027", "E-CON-017", "E-CON-018", "E-SCA-001"];
@@ -323,6 +339,210 @@ export function checkCorePageCoverage(corpus: SiteCorpus): EvidenceEntry {
     status,
     corpus.homepage.finalUrl,
     `Assessed from link URLs discovered on the homepage — pages linked only from deeper navigation may be missed.${slugNote}`
+  );
+}
+
+// --- Area A1: mechanical Capture / Response checks ---
+//
+// Deterministic, no LLM call, built entirely from the Area B PageLink inventory
+// and the Area A1 form inventory. They exist because Run 001 named a CONVERSION
+// constraint while the evidence subset contained no Capture or Response item at
+// all — the constraint won a race it ran alone.
+//
+// Every value below is phrased as what was FOUND, not what is missing, so that a
+// static-layer blind spot degrades into a smaller positive claim rather than a
+// confident false absence. Where a genuine absence has to be stated, the entry
+// goes through applyZeroAbsentSafetyRule like every other absence claim.
+
+const CONVERSION_TYPES: PageLink["linkType"][] = ["whatsapp", "booking", "tel", "mailto"];
+
+function allPageLinks(corpus: SiteCorpus): PageLink[] {
+  return allPages(corpus).flatMap((p) => p.pageLinks ?? []);
+}
+
+function allForms(corpus: SiteCorpus): PageForm[] {
+  return allPages(corpus).flatMap((p) => p.forms ?? []);
+}
+
+// True when no page carried a link inventory at all — i.e. the corpus predates
+// Area B. Distinguishes "checked and found nothing" from "never looked".
+function noLinkInventory(corpus: SiteCorpus): boolean {
+  return allPages(corpus).every((p) => p.pageLinks === undefined);
+}
+
+function label(l: PageLink): string {
+  return l.text.trim() || "(unlabelled)";
+}
+
+export function checkPrimaryCta(corpus: SiteCorpus): EvidenceEntry {
+  const pages = allPages(corpus);
+  const sources = pages.map((p) => p.finalUrl).join(", ");
+  if (!pages.length || noLinkInventory(corpus)) {
+    return entry("E-CON-101", "No link inventory available for this corpus", "Not Assessed", sources || "N/A",
+      "Pages were fetched without the Area B link inventory, so CTA presence could not be assessed mechanically.");
+  }
+
+  const links = allPageLinks(corpus);
+  const dead = links.filter((l) => l.linkType === "empty");
+  const pagesWithRoute = pages.filter((p) =>
+    (p.pageLinks ?? []).some((l) => CONVERSION_TYPES.includes(l.linkType))
+  );
+  const deadLabels = [...new Set(dead.map(label))].slice(0, 5);
+
+  // Consistency = does a conversion route appear on every fetched page, and do
+  // the same CTA labels recur, rather than each page inventing its own?
+  const routeLabels = links
+    .filter((l) => CONVERSION_TYPES.includes(l.linkType))
+    .map((l) => label(l).toLowerCase());
+  const distinctRouteLabels = new Set(routeLabels).size;
+  const consistent = pagesWithRoute.length === pages.length;
+
+  let status: ResultStatus;
+  if (pagesWithRoute.length === 0) status = "Fail";
+  else if (dead.length > 0 || !consistent) status = "Partial";
+  else status = "Pass";
+
+  const deadNote = dead.length
+    ? ` ${dead.length} anchor(s) carry an empty href and lead nowhere: ${deadLabels.join(", ")}.`
+    : " No dead (empty-href) anchors found.";
+  const coverageNote = ` A conversion route was found on ${pagesWithRoute.length} of ${pages.length} fetched pages.`;
+
+  return entry(
+    "E-CON-101",
+    `${pagesWithRoute.length} of ${pages.length} pages carry at least one conversion route; ${dead.length} dead (empty-href) anchor(s); ` +
+      `${distinctRouteLabels} distinct conversion CTA label(s) in use`,
+    status,
+    sources,
+    `Counted from anchors in the fetched markup.${coverageNote}${deadNote} ` +
+      `Static markup only — CTAs injected by JavaScript after load would not appear here.`
+  );
+}
+
+export function checkConversionDestinations(corpus: SiteCorpus): EvidenceEntry {
+  const pages = allPages(corpus);
+  const sources = pages.map((p) => p.finalUrl).join(", ");
+  if (!pages.length || noLinkInventory(corpus)) {
+    return entry("E-CON-102", "No link inventory available for this corpus", "Not Assessed", sources || "N/A",
+      "Pages were fetched without the Area B link inventory, so conversion destinations could not be assessed mechanically.");
+  }
+
+  const links = allPageLinks(corpus);
+  const destinationsOf = (t: PageLink["linkType"]): string[] =>
+    [...new Set(links.filter((l) => l.linkType === t).map((l) => l.resolved || l.href))];
+
+  const whatsapp = destinationsOf("whatsapp");
+  const booking = destinationsOf("booking");
+  const tel = destinationsOf("tel");
+  const mailto = destinationsOf("mailto");
+  const externalBooking = links.filter((l) => l.linkType === "booking" && l.external).length;
+  const conflicts = findRepeatedLabelConflicts(links);
+
+  // Split destination = one intent, several endpoints. On iSmile two different
+  // WhatsApp numbers served booking intent, and the high-value page used the
+  // one the rest of the site did not.
+  const splitWhatsapp = whatsapp.length > 1;
+  const splitBooking = booking.length > 1;
+  const totalRoutes = whatsapp.length + booking.length + tel.length + mailto.length;
+
+  let status: ResultStatus;
+  if (totalRoutes === 0) status = "Fail";
+  else if (conflicts.length > 0 || splitWhatsapp || splitBooking) status = "Partial";
+  else status = "Pass";
+
+  const conflictNote = conflicts.length
+    ? ` ${conflicts.length} CTA label(s) resolve to more than one destination: ` +
+      conflicts.slice(0, 3).map((c) => `"${c.text}" -> ${c.hrefs.length} destinations`).join("; ") + "."
+    : " No CTA label resolves to more than one destination.";
+  const splitNote =
+    (splitWhatsapp ? ` ${whatsapp.length} distinct WhatsApp destinations are in use.` : "") +
+    (splitBooking ? ` ${booking.length} distinct booking destinations are in use.` : "");
+
+  return entry(
+    "E-CON-102",
+    `Conversion destinations found: ${whatsapp.length} WhatsApp, ${booking.length} booking (${externalBooking} external), ` +
+      `${tel.length} phone, ${mailto.length} email`,
+    status,
+    sources,
+    `Destinations read from anchor targets in the fetched markup — no destination was opened, called, messaged or ` +
+      `followed.${conflictNote}${splitNote} Static markup only; JavaScript-injected destinations would not appear here.`
+  );
+}
+
+export function checkContactForm(corpus: SiteCorpus): EvidenceEntry {
+  const pages = allPages(corpus);
+  const sources = pages.map((p) => p.finalUrl).join(", ");
+  if (!pages.length || pages.every((p) => p.forms === undefined)) {
+    return entry("E-CON-103", "No form inventory available for this corpus", "Not Assessed", sources || "N/A",
+      "Pages were fetched without the Area A1 form inventory, so contact form presence could not be assessed mechanically.");
+  }
+
+  const forms = allForms(corpus);
+  const substantive = forms.filter((f) => f.fields.length >= 2);
+  const fieldNames = [
+    ...new Set(forms.flatMap((f) => f.fields.map((x) => x.placeholder || x.name || x.type))),
+  ].slice(0, 12);
+  const anyRequired = forms.some((f) => f.fields.some((x) => x.required));
+
+  let status: ResultStatus;
+  if (forms.length === 0) status = "Fail";
+  else if (substantive.length === 0) status = "Partial";
+  else status = "Pass";
+
+  const requiredNote = substantive.length
+    ? anyRequired
+      ? " At least one field carries the HTML required attribute."
+      : " No field carries the HTML required attribute; a builder may still validate in JavaScript, which is not observable here."
+    : "";
+
+  return entry(
+    "E-CON-103",
+    forms.length
+      ? `${forms.length} form(s) found, ${substantive.length} with 2 or more visible fields. Fields seen: ${fieldNames.join(", ") || "none"}`
+      : "No form elements found in the fetched markup",
+    status,
+    sources,
+    `Read from form markup only. No form was submitted and no field was filled, so delivery, validation and ` +
+      `post-submission behaviour are all unassessed.${requiredNote}`
+  );
+}
+
+// Wording that constitutes a visible promise about replying. Deliberately narrow
+// — a vague "get in touch" is not a response promise.
+const RESPONSE_PROMISE = /\b(we(?:'| w)?ll (?:get back|respond|reply|contact you)|response time|respond within|reply within|get back to you within|same[- ]day (?:reply|response)|within \d+\s*(?:hours?|hrs?|business days?|days?)\b[^.]{0,40}(?:reply|respond|response|back to you))/i;
+
+export function checkResponsePromise(corpus: SiteCorpus): EvidenceEntry {
+  const pages = allPages(corpus);
+  const sources = pages.map((p) => p.finalUrl).join(", ");
+  if (!pages.length) {
+    return entry("E-RES-101", "No pages could be fetched", "Not Assessed", "Direct fetch", "Fetch blocked or failed.");
+  }
+
+  const promisePages = pages.filter((p) => RESPONSE_PROMISE.test(p.text));
+  const links = allPageLinks(corpus);
+  const channels = CONVERSION_TYPES.filter((t) => links.some((l) => l.linkType === t));
+  const hasForm = allForms(corpus).length > 0;
+  const channelNames = [...channels.map(String), ...(hasForm ? ["form"] : [])];
+
+  // A missing promise is an absence claim, so it never becomes a Fail here — the
+  // copy could sit in a chat widget or a JS-rendered block. Partial at worst,
+  // and the safety rule may downgrade it further.
+  let status: ResultStatus;
+  if (promisePages.length > 0) status = channelNames.length >= 2 ? "Pass" : "Partial";
+  else if (channelNames.length === 0) status = "Not Assessed";
+  else status = "Partial";
+
+  const promiseNote = promisePages.length
+    ? `A response promise is visible on ${promisePages.length} page(s).`
+    : "No response-time or post-submission promise was found in the fetched text; this is not evidence that none is shown to a visitor.";
+
+  return entry(
+    "E-RES-101",
+    `${channelNames.length} response channel(s) visible: ${channelNames.join(", ") || "none"}. ` +
+      (promisePages.length ? "Response promise present." : "No response promise found in fetched text."),
+    status,
+    sources,
+    `${promiseNote} Channels counted from anchor targets and form markup. No channel was used — nothing was sent, ` +
+      `called, messaged or submitted. Post-submission behaviour is not observable without submitting, which is not done.`
   );
 }
 

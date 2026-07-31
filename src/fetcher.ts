@@ -9,6 +9,8 @@ import {
   type EmbedSignals,
   type FetchedPage,
   type LinkType,
+  type PageForm,
+  type PageFormField,
   type PageImage,
   type PageLink,
 } from "./types.js";
@@ -20,6 +22,8 @@ const MAX_TEXT_CHARS = 20_000;
 const MAX_IMAGE_INVENTORY = 40; // bounded — the run log stays inspectable by hand
 const MAX_LINK_INVENTORY = 200; // bounded — nav duplication alone can run to dozens
 const MAX_LINK_TEXT_CHARS = 120;
+const MAX_FORM_INVENTORY = 12;
+const MAX_FORM_FIELDS = 30;
 
 // Phase 1 (P1-a): count markers indicating content this fetch cannot see.
 // Runs BEFORE <script> is stripped, so script-based markers (jQuery.numerator)
@@ -210,6 +214,37 @@ export function collectPageLinks($: cheerio.CheerioAPI, base: string): PageLink[
   return out;
 }
 
+// Area A1: bounded form inventory. Markup only — presence and fields. Nothing
+// here is submitted, and nothing is inferred about delivery or validation.
+export function collectForms($: cheerio.CheerioAPI, base: string): PageForm[] {
+  const out: PageForm[] = [];
+  $("form").each((_, el) => {
+    if (out.length >= MAX_FORM_INVENTORY) return;
+    const $f = $(el);
+    const fields: PageFormField[] = [];
+    $f.find("input, textarea, select").each((__, i) => {
+      if (fields.length >= MAX_FORM_FIELDS) return;
+      const $i = $(i);
+      const tag = (i as { tagName?: string }).tagName?.toLowerCase() ?? "";
+      const type = ($i.attr("type") || (tag === "input" ? "text" : tag)).toLowerCase();
+      if (type === "hidden") return; // not a visible field the visitor fills in
+      fields.push({
+        type,
+        name: ($i.attr("name") ?? "").slice(0, 60),
+        placeholder: ($i.attr("placeholder") ?? "").replace(/\s+/g, " ").trim().slice(0, 80),
+        required: $i.attr("required") !== undefined,
+      });
+    });
+    out.push({
+      action: ($f.attr("action") ?? "").slice(0, 300),
+      method: ($f.attr("method") ?? "get").toLowerCase(),
+      fields,
+      pageUrl: base,
+    });
+  });
+  return out;
+}
+
 // Same visible label pointing at two different places — the iSmile case, where
 // "Book Now" reached a different WhatsApp number than the booking CTA elsewhere.
 // Pure and exported for Area A to consume; nothing calls it in this slice.
@@ -258,7 +293,7 @@ export async function fetchPage(url: string): Promise<FetchedPage> {
         url, finalUrl: url, status: 0, html: "", text: "", title: "",
         metaDescription: "", h1s: [], links: [], canonical: "",
         dynamicSignals: { ...EMPTY_DYNAMIC_SIGNALS }, images: [], pageLinks: [],
-        embedSignals: { ...EMPTY_EMBED_SIGNALS, markers: [] },
+        embedSignals: { ...EMPTY_EMBED_SIGNALS, markers: [] }, forms: [],
         fetchedAt: new Date().toISOString(),
         error: forbidden,
       };
@@ -310,6 +345,7 @@ async function fetchPageUnchecked(url: string): Promise<FetchedPage> {
     // Area B — conversion inventory, parallel to `links` and never a substitute.
     // This one keeps the empty hrefs the crawl list correctly discards.
     const pageLinks = collectPageLinks($, res.url);
+    const forms = collectForms($, res.url); // Area A1
 
     const text = $("body").text().replace(/\s+/g, " ").trim().slice(0, MAX_TEXT_CHARS);
 
@@ -330,6 +366,7 @@ async function fetchPageUnchecked(url: string): Promise<FetchedPage> {
       images,
       pageLinks,
       embedSignals,
+      forms,
       fetchedAt,
     };
   } catch (err) {
@@ -348,6 +385,7 @@ async function fetchPageUnchecked(url: string): Promise<FetchedPage> {
       images: [],
       pageLinks: [],
       embedSignals: { ...EMPTY_EMBED_SIGNALS, markers: [] },
+      forms: [],
       fetchedAt,
       error: err instanceof Error ? err.message : String(err),
     };

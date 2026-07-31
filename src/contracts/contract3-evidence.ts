@@ -5,11 +5,18 @@
 // itself.
 
 import {
+  applyZeroAbsentSafetyRule,
+  checkContactForm,
+  checkConversionDestinations,
   checkCorePageCoverage,
   checkH1s,
   checkMetaDescriptions,
+  checkPrimaryCta,
+  checkResponsePromise,
   checkSsl,
   checkTitles,
+  corpusDynamicSignals,
+  corpusEmbedSignals,
   gbpChecks,
   runTextualChecks,
 } from "../evidence/checks.js";
@@ -35,16 +42,57 @@ function aggregateCoverage(entries: EvidenceEntry[]): string {
   const browserNote = awaitingBrowser
     ? ` ${awaitingBrowser} of those await consumer-browser confirmation of third-party embedded content and must not be reported as absent.`
     : "";
-  return `${label} — ${assessed} of ${total} evidence items could actually be assessed; the rest are honestly recorded as Not Assessed.${browserNote}`;
+  return (
+    `${label} — ${assessed} of ${total} evidence items could actually be assessed; the rest are honestly recorded as ` +
+    `Not Assessed.${browserNote} ${perGrowthFunctionCoverage(entries, unresolved)}`
+  );
+}
+
+// Area A1: an aggregate count hides which growth functions were never tested.
+// Run 001 reported "10 of 14 assessed" while Capture and Response — two of the
+// five functions its own Goal Model named — had zero items. True, and useless.
+function perGrowthFunctionCoverage(
+  entries: EvidenceEntry[],
+  unresolved: EvidenceEntry["resultStatus"][]
+): string {
+  const byFn = new Map<string, { assessed: number; total: number }>();
+  for (const e of entries) {
+    // Composite labels ("Discoverability / Credibility") count toward both.
+    for (const fn of e.growthFunction.split("/").map((s) => s.trim()).filter(Boolean)) {
+      if (fn === "(escalation)") continue;
+      const row = byFn.get(fn) ?? { assessed: 0, total: 0 };
+      row.total++;
+      if (!unresolved.includes(e.resultStatus)) row.assessed++;
+      byFn.set(fn, row);
+    }
+  }
+  if (byFn.size === 0) return "";
+  const parts = [...byFn.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([fn, r]) => `${fn} ${r.assessed}/${r.total}`);
+  return `By growth function: ${parts.join(", ")}.`;
 }
 
 export async function runContract3(corpus: SiteCorpus): Promise<EvidencePackage> {
+  // Area A1: the Capture/Response checks assert absence in places conversion
+  // controls are commonly injected client-side, so they pass through the same
+  // safety rule as every other absence claim rather than asserting a false zero.
+  const signals = corpusDynamicSignals(corpus);
+  const embeds = corpusEmbedSignals(corpus);
+  const captureResponse = [
+    checkPrimaryCta(corpus),
+    checkConversionDestinations(corpus),
+    checkContactForm(corpus),
+    checkResponsePromise(corpus),
+  ].map((e) => applyZeroAbsentSafetyRule(e, signals, embeds));
+
   const entries: EvidenceEntry[] = [
     checkSsl(corpus),
     checkTitles(corpus),
     checkMetaDescriptions(corpus),
     checkH1s(corpus),
     checkCorePageCoverage(corpus),
+    ...captureResponse,
     ...(await runTextualChecks(corpus)),
     ...gbpChecks(),
   ];

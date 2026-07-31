@@ -196,6 +196,25 @@ export interface PageLink {
   inNav: boolean; // sits inside nav/header/[role=navigation]
 }
 
+// Area A1: the static layer captured no form data at all, so "is there a way to
+// contact this business" could not be answered mechanically. Markup-level only —
+// presence, fields and their labels. Says nothing about whether the form works,
+// validates, or delivers: none of that is observable without submitting one,
+// which DRDS does not do.
+export interface PageFormField {
+  type: string; // input type attribute, or the tag name for textarea/select
+  name: string;
+  placeholder: string;
+  required: boolean; // the HTML attribute only — builders often validate in JS
+}
+
+export interface PageForm {
+  action: string; // "" when the builder handles submission in JavaScript
+  method: string;
+  fields: PageFormField[];
+  pageUrl: string;
+}
+
 // A fetched page — the raw material evidence checks work from.
 export interface FetchedPage {
   url: string;
@@ -217,6 +236,8 @@ export interface FetchedPage {
   // Area D: third-party embed markers found in this page's markup. Optional for
   // the same reason.
   embedSignals?: EmbedSignals;
+  // Area A1: bounded form inventory. Optional, same additive pattern.
+  forms?: PageForm[];
   fetchedAt: string;
   error?: string;
 }
