@@ -150,9 +150,11 @@ check("Capture appears as a growth function", pkg.entries.some((e) => e.growthFu
 check("Response appears as a growth function", pkg.entries.some((e) => e.growthFunction === "Response"));
 check("coverage names Capture", /Capture \d+\/\d+/.test(pkg.evidenceCoverage), pkg.evidenceCoverage);
 check("coverage names Response", /Response \d+\/\d+/.test(pkg.evidenceCoverage), pkg.evidenceCoverage);
+// Patch 001.2 relabelled the header to "By growth function (usable/attempted — …):",
+// so match the stable prefix rather than the exact old string.
 check(
   "per-growth-function breakdown present",
-  pkg.evidenceCoverage.includes("By growth function:"),
+  /By growth function[^:]*:/.test(pkg.evidenceCoverage),
   pkg.evidenceCoverage
 );
 console.log(`  coverage string: ${pkg.evidenceCoverage}`);

@@ -25,52 +25,85 @@ import { llmJson, loadPrompt } from "../llm/client.js";
 import type { SiteCorpus } from "../site.js";
 import type { EvidenceEntry, EvidencePackage, ResultStatus } from "../types.js";
 
-// Area D: "Requires Browser Confirmation" joins Not Assessed / Not Applicable as
-// unresolved. It is an open question about a third-party embed, not a result —
-// counting it as assessed would inflate coverage on exactly the checks the embed
-// rule exists to hold open.
-function aggregateCoverage(entries: EvidenceEntry[]): string {
-  const unresolved: EvidenceEntry["resultStatus"][] = [
-    "Not Assessed",
-    "Not Applicable",
-    "Requires Browser Confirmation",
-  ];
-  const assessed = entries.filter((e) => !unresolved.includes(e.resultStatus)).length;
-  const awaitingBrowser = entries.filter((e) => e.resultStatus === "Requires Browser Confirmation").length;
+// Patch 001.2 — coverage semantics.
+//
+// Coverage answers three different questions and used to blur them into one
+// number. Run 002 reported "Capture 3/3" while one of those three items was
+// Indeterminate — a check that ran and did not conclude. True as arithmetic,
+// misleading as a statement about what we know.
+//
+//   USABLE     — the check reached a conclusion something can be built on.
+//                Pass, Partial, Fail.
+//   ATTEMPTED  — a method existed and the check actually looked. Usable plus
+//                Indeterminate and Requires Browser Confirmation, which were both
+//                attempted and simply did not resolve.
+//   UNRESOLVED — attempted without conclusion (Indeterminate, Requires Browser
+//                Confirmation) or never reachable at all (Not Assessed, Not
+//                Applicable).
+//
+// Only USABLE may appear as a numerator against evidence strength. Indeterminate
+// is still counted as attempted, because pretending the check never ran would be
+// its own dishonesty.
+const USABLE_STATUSES: ResultStatus[] = ["Pass", "Partial", "Fail"];
+// Attempted but inconclusive — distinct from never having had a method.
+const ATTEMPTED_UNRESOLVED: ResultStatus[] = ["Indeterminate", "Requires Browser Confirmation"];
+
+function isUsable(s: ResultStatus): boolean {
+  return USABLE_STATUSES.includes(s);
+}
+function wasAttempted(s: ResultStatus): boolean {
+  return isUsable(s) || ATTEMPTED_UNRESOLVED.includes(s);
+}
+
+// Exported so Patch 001.2 can test coverage semantics directly against fixture
+// entries, with no pipeline run and no LLM call.
+export function aggregateCoverage(entries: EvidenceEntry[]): string {
   const total = entries.length;
-  const label = assessed >= total * 0.75 ? "Substantial" : assessed >= total * 0.4 ? "Partial" : "Thin";
-  const browserNote = awaitingBrowser
-    ? ` ${awaitingBrowser} of those await consumer-browser confirmation of third-party embedded content and must not be reported as absent.`
-    : "";
+  const usable = entries.filter((e) => isUsable(e.resultStatus)).length;
+  const indeterminate = entries.filter((e) => e.resultStatus === "Indeterminate").length;
+  const awaitingBrowser = entries.filter((e) => e.resultStatus === "Requires Browser Confirmation").length;
+  const notAssessed = entries.filter(
+    (e) => e.resultStatus === "Not Assessed" || e.resultStatus === "Not Applicable"
+  ).length;
+
+  const label = usable >= total * 0.75 ? "Substantial" : usable >= total * 0.4 ? "Partial" : "Thin";
+
+  const unresolvedParts: string[] = [];
+  if (indeterminate) unresolvedParts.push(`${indeterminate} indeterminate (checked, did not conclude)`);
+  if (awaitingBrowser)
+    unresolvedParts.push(
+      `${awaitingBrowser} awaiting consumer-browser confirmation of third-party embedded content, which must not be reported as absent`
+    );
+  if (notAssessed) unresolvedParts.push(`${notAssessed} not assessed (no method available in this run)`);
+  const unresolvedNote = unresolvedParts.length ? ` Unresolved: ${unresolvedParts.join("; ")}.` : "";
+
   return (
-    `${label} — ${assessed} of ${total} evidence items could actually be assessed; the rest are honestly recorded as ` +
-    `Not Assessed.${browserNote} ${perGrowthFunctionCoverage(entries, unresolved)}`
+    `${label} — ${usable} of ${total} evidence items produced a usable result (Pass, Partial or Fail).` +
+    `${unresolvedNote} ${perGrowthFunctionCoverage(entries)}`
   );
 }
 
-// Area A1: an aggregate count hides which growth functions were never tested.
+// Area A1 + Patch 001.2: an aggregate count hides which growth functions were
+// never tested, and a single ratio hides which were tested without concluding.
 // Run 001 reported "10 of 14 assessed" while Capture and Response — two of the
 // five functions its own Goal Model named — had zero items. True, and useless.
-function perGrowthFunctionCoverage(
-  entries: EvidenceEntry[],
-  unresolved: EvidenceEntry["resultStatus"][]
-): string {
-  const byFn = new Map<string, { assessed: number; total: number }>();
+function perGrowthFunctionCoverage(entries: EvidenceEntry[]): string {
+  const byFn = new Map<string, { usable: number; attempted: number }>();
   for (const e of entries) {
     // Composite labels ("Discoverability / Credibility") count toward both.
     for (const fn of e.growthFunction.split("/").map((s) => s.trim()).filter(Boolean)) {
       if (fn === "(escalation)") continue;
-      const row = byFn.get(fn) ?? { assessed: 0, total: 0 };
-      row.total++;
-      if (!unresolved.includes(e.resultStatus)) row.assessed++;
+      const row = byFn.get(fn) ?? { usable: 0, attempted: 0 };
+      if (wasAttempted(e.resultStatus)) row.attempted++;
+      if (isUsable(e.resultStatus)) row.usable++;
       byFn.set(fn, row);
     }
   }
   if (byFn.size === 0) return "";
   const parts = [...byFn.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([fn, r]) => `${fn} ${r.assessed}/${r.total}`);
-  return `By growth function: ${parts.join(", ")}.`;
+    .map(([fn, r]) => `${fn} ${r.usable}/${r.attempted}`);
+  return `By growth function (usable/attempted — attempted excludes checks with no method in this run): ${parts.join(", ")}.`;
 }
 
 export async function runContract3(corpus: SiteCorpus): Promise<EvidencePackage> {

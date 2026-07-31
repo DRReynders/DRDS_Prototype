@@ -21,16 +21,20 @@ Regulator-sensitive context:
 Evidence coverage across growth functions
 
 The Evidence Package ends with an Aggregate Evidence Coverage line carrying a
-per-growth-function breakdown, in the form "Capture 3/3, Credibility 1/6" — items
-actually assessed over items attempted for that function. Read it before answering
-question 1, and let it discipline your answer.
+per-growth-function breakdown, in the form "Capture 2/3, Credibility 1/6" — items
+that produced a USABLE result over items ATTEMPTED for that function. Usable means
+the check concluded: Pass, Partial or Fail. A check that ran without concluding
+(Indeterminate, or Requires Browser Confirmation) counts as attempted but not
+usable, so "2/3" means three checks ran and only two of them tell you anything.
+Read this line before answering question 1, and let it discipline your answer.
 
-- A growth function showing 0 assessed items was not examined in this run. Do not
-  name it as the Primary Constraint. Nothing was checked there, so there is no basis
-  to prefer it over any other unexamined explanation, and naming it would present an
-  untested guess as a diagnosis.
+- A growth function showing 0 usable items gives you nothing to build on. Do not
+  name it as the Primary Constraint. Either nothing was checked there, or every
+  check that ran failed to conclude; in both cases there is no basis to prefer it
+  over any other unexamined explanation, and naming it would present an untested
+  guess as a diagnosis.
 - This is a rule about what was measured, not about which answers are permitted. A
-  function with assessed evidence stays fully available however few items it has.
+  function with usable evidence stays fully available however few items it has.
   Conversion, credibility, visibility and response constraints are all equally
   legitimate when the evidence for them was actually gathered.
 - Where the evidence you rely on is Partial, Indeterminate, Requires Browser
