@@ -115,7 +115,23 @@ export function applyZeroAbsentSafetyRule(
   embeds: EmbedSignals = EMPTY_EMBED_SIGNALS
 ): EvidenceEntry {
   if (entry.resultStatus !== "Fail" && entry.resultStatus !== "Partial") return entry;
-  if (!claimsAbsenceOrZero(entry.evidenceValue)) return entry;
+
+  // Patch 001.1. A check that directly observed and counted a defect is not
+  // making an absence claim, and no amount of rendering can un-observe it. Ten
+  // anchors with href="" are ten anchors with href="". Run 002 downgraded exactly
+  // that finding because the word "empty" appears in "(empty-href)" — a wording
+  // accident, not a judgement about the evidence.
+  //
+  // Only checks that explicitly declare "presence" are exempt. Everything that
+  // leaves claimType undefined — every LLM-authored entry included — still goes
+  // through the heuristic unchanged, so the rule is not weakened for anything it
+  // was written to protect.
+  if (entry.claimType === "presence") return entry;
+
+  // An explicit "absence" declaration is trusted over the wording heuristic in
+  // the other direction too: the check said it concluded something is missing, so
+  // it is eligible for protection whatever words it happened to use.
+  if (entry.claimType !== "absence" && !claimsAbsenceOrZero(entry.evidenceValue)) return entry;
 
   if (EMBED_SENSITIVE_IDS.has(entry.evidenceId) && hasReviewOrMapEmbed(embeds)) {
     const named = embeds.markers.length ? embeds.markers.join(", ") : "third-party embed container";
@@ -407,15 +423,27 @@ export function checkPrimaryCta(corpus: SiteCorpus): EvidenceEntry {
     : " No dead (empty-href) anchors found.";
   const coverageNote = ` A conversion route was found on ${pagesWithRoute.length} of ${pages.length} fetched pages.`;
 
-  return entry(
-    "E-CON-101",
-    `${pagesWithRoute.length} of ${pages.length} pages carry at least one conversion route; ${dead.length} dead (empty-href) anchor(s); ` +
-      `${distinctRouteLabels} distinct conversion CTA label(s) in use`,
-    status,
-    sources,
-    `Counted from anchors in the fetched markup.${coverageNote}${deadNote} ` +
-      `Static markup only — CTAs injected by JavaScript after load would not appear here.`
-  );
+  // Patch 001.1 — claim polarity, decided by what was actually found.
+  // No route anywhere is a genuine absence claim, and JavaScript-injected CTAs
+  // are exactly how that claim goes wrong, so it keeps its protection. Dead
+  // anchors are counted defects sitting in the markup we read: observed, not
+  // inferred from silence, and not something a renderer can take back.
+  const claimType: EvidenceEntry["claimType"] =
+    pagesWithRoute.length === 0 ? "absence" : dead.length > 0 ? "presence" : "mixed";
+
+  return {
+    ...entry(
+      "E-CON-101",
+      `${pagesWithRoute.length} of ${pages.length} pages carry at least one conversion route; ${dead.length} dead (empty-href) anchor(s); ` +
+        `${distinctRouteLabels} distinct conversion CTA label(s) in use`,
+      status,
+      sources,
+      `Counted from anchors in the fetched markup.${coverageNote}${deadNote} ` +
+        `Static markup only — CTAs injected by JavaScript after load would not appear here, so the ` +
+        `route-coverage figure is a floor, not a ceiling. The dead anchors above were directly observed.`
+    ),
+    claimType,
+  };
 }
 
 export function checkConversionDestinations(corpus: SiteCorpus): EvidenceEntry {
@@ -457,15 +485,20 @@ export function checkConversionDestinations(corpus: SiteCorpus): EvidenceEntry {
     (splitWhatsapp ? ` ${whatsapp.length} distinct WhatsApp destinations are in use.` : "") +
     (splitBooking ? ` ${booking.length} distinct booking destinations are in use.` : "");
 
-  return entry(
-    "E-CON-102",
-    `Conversion destinations found: ${whatsapp.length} WhatsApp, ${booking.length} booking (${externalBooking} external), ` +
-      `${tel.length} phone, ${mailto.length} email`,
-    status,
-    sources,
-    `Destinations read from anchor targets in the fetched markup — no destination was opened, called, messaged or ` +
-      `followed.${conflictNote}${splitNote} Static markup only; JavaScript-injected destinations would not appear here.`
-  );
+  // Patch 001.1: destinations and label conflicts are counted observations. Only
+  // "we found no destinations at all" is an absence claim.
+  return {
+    ...entry(
+      "E-CON-102",
+      `Conversion destinations found: ${whatsapp.length} WhatsApp, ${booking.length} booking (${externalBooking} external), ` +
+        `${tel.length} phone, ${mailto.length} email`,
+      status,
+      sources,
+      `Destinations read from anchor targets in the fetched markup — no destination was opened, called, messaged or ` +
+        `followed.${conflictNote}${splitNote} Static markup only; JavaScript-injected destinations would not appear here.`
+    ),
+    claimType: totalRoutes === 0 ? "absence" : "presence",
+  };
 }
 
 export function checkContactForm(corpus: SiteCorpus): EvidenceEntry {
@@ -494,16 +527,21 @@ export function checkContactForm(corpus: SiteCorpus): EvidenceEntry {
       : " No field carries the HTML required attribute; a builder may still validate in JavaScript, which is not observable here."
     : "";
 
-  return entry(
-    "E-CON-103",
-    forms.length
-      ? `${forms.length} form(s) found, ${substantive.length} with 2 or more visible fields. Fields seen: ${fieldNames.join(", ") || "none"}`
-      : "No form elements found in the fetched markup",
-    status,
-    sources,
-    `Read from form markup only. No form was submitted and no field was filled, so delivery, validation and ` +
-      `post-submission behaviour are all unassessed.${requiredNote}`
-  );
+  // Patch 001.1: a counted inventory of forms is an observation; no forms at all
+  // is an absence claim, and forms are commonly injected by page builders.
+  return {
+    ...entry(
+      "E-CON-103",
+      forms.length
+        ? `${forms.length} form(s) found, ${substantive.length} with 2 or more visible fields. Fields seen: ${fieldNames.join(", ") || "none"}`
+        : "No form elements found in the fetched markup",
+      status,
+      sources,
+      `Read from form markup only. No form was submitted and no field was filled, so delivery, validation and ` +
+        `post-submission behaviour are all unassessed.${requiredNote}`
+    ),
+    claimType: forms.length === 0 ? "absence" : "presence",
+  };
 }
 
 // Wording that constitutes a visible promise about replying. Deliberately narrow
@@ -535,15 +573,21 @@ export function checkResponsePromise(corpus: SiteCorpus): EvidenceEntry {
     ? `A response promise is visible on ${promisePages.length} page(s).`
     : "No response-time or post-submission promise was found in the fetched text; this is not evidence that none is shown to a visitor.";
 
-  return entry(
-    "E-RES-101",
-    `${channelNames.length} response channel(s) visible: ${channelNames.join(", ") || "none"}. ` +
-      (promisePages.length ? "Response promise present." : "No response promise found in fetched text."),
-    status,
-    sources,
-    `${promiseNote} Channels counted from anchor targets and form markup. No channel was used — nothing was sent, ` +
-      `called, messaged or submitted. Post-submission behaviour is not observable without submitting, which is not done.`
-  );
+  // Patch 001.1: a missing response promise IS an absence claim, and promise copy
+  // is exactly the sort of thing a chat widget or JS block carries — so this one
+  // keeps its protection. Only a promise actually found is presence.
+  return {
+    ...entry(
+      "E-RES-101",
+      `${channelNames.length} response channel(s) visible: ${channelNames.join(", ") || "none"}. ` +
+        (promisePages.length ? "Response promise present." : "No response promise found in fetched text."),
+      status,
+      sources,
+      `${promiseNote} Channels counted from anchor targets and form markup. No channel was used — nothing was sent, ` +
+        `called, messaged or submitted. Post-submission behaviour is not observable without submitting, which is not done.`
+    ),
+    claimType: promisePages.length > 0 ? "presence" : "absence",
+  };
 }
 
 // --- Textual checks (LLM classification, constrained to genuinely fetched text) ---

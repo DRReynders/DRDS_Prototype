@@ -94,6 +94,24 @@ export interface GoalModel {
   reasoningBasis: string;
 }
 
+// Patch 001.1 — claim polarity.
+//
+// The absence-safety rule exists to stop "we saw nothing" becoming "there is
+// nothing" when the page renders content later. It decides which entries to
+// protect by reading their wording, and that heuristic misfires: Run 002
+// downgraded a correct finding — "10 dead (empty-href) anchor(s)" — because the
+// word "empty" matched the absence pattern. Dead anchors are directly observed
+// defects, not something that might be hiding behind JavaScript.
+//
+// A check knows what kind of claim it is making, so it should say so rather than
+// leave a regex to guess:
+//   "presence" — a defect or feature was directly observed and counted. Nothing
+//                a renderer could reveal changes it, so it is never downgraded.
+//   "absence"  — the check concluded something is missing. Always eligible for
+//                the safety rule, whatever words it happens to use.
+//   "mixed" / undefined — fall back to the wording heuristic, as before.
+export type EvidenceClaimType = "presence" | "absence" | "mixed";
+
 // Contract 3 — Evidence
 export interface EvidenceEntry {
   evidenceId: string;
@@ -104,6 +122,9 @@ export interface EvidenceEntry {
   source: string;
   evidenceAccessibility: EvidenceAccessibility;
   observation: string;
+  // Optional and additive: entries produced before this patch, and every
+  // LLM-authored entry, leave it undefined and keep the previous behaviour.
+  claimType?: EvidenceClaimType;
 }
 
 export interface EvidencePackage {
