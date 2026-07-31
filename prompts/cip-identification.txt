@@ -15,7 +15,11 @@ Fetched page content (the business's own website — the only source available i
 Produce the CIP fields:
 1. Business Name — as the business itself states it.
 2. Business Type — exactly one of this fixed taxonomy: Financial Advisory, Legal,
-   Accounting, Consulting, Other Professional Service, Other.
+   Accounting, Consulting, Dental, Healthcare / Medical, Other Professional Service,
+   Other. Choose Dental for a dental practice, and Healthcare / Medical for any other
+   clinical or medical provider. Choose the specific option when it fits — do not
+   fall back to Other Professional Service for a business the taxonomy names, because
+   sector affects how the resulting report may responsibly be worded.
 3. Primary Digital Asset — the website itself (the identifier above), unless the
    content clearly indicates another asset is primary.
 4. Detected Digital Assets — other digital properties genuinely linked or named in
@@ -41,7 +45,7 @@ an honest inability to identify is more useful than a guessed CIP.
 Respond with a single JSON object, no other text:
 {
   "businessName": "...",
-  "businessType": "Financial Advisory" | "Legal" | "Accounting" | "Consulting" | "Other Professional Service" | "Other",
+  "businessType": "Financial Advisory" | "Legal" | "Accounting" | "Consulting" | "Dental" | "Healthcare / Medical" | "Other Professional Service" | "Other",
   "primaryDigitalAsset": "...",
   "detectedDigitalAssets": ["...", ...],
   "location": "...",

@@ -39,6 +39,14 @@ export interface IdentityConflict {
   details: string;
 }
 
+// Bounded Patch Area C1. Sector is derived from businessType in code — never a
+// second LLM call — because it changes how a report may responsibly be worded.
+// Run 001 classified a dental practice as "Other Professional Service" (the only
+// option the taxonomy then offered) and consequently recommended toward patient
+// testimonials, before/after imagery and outcome proof with no awareness that
+// those are restricted categories for a regulated healthcare provider.
+export type BusinessSector = "Healthcare" | "General";
+
 export interface ClientIdentificationPacket {
   businessName: string;
   businessType: string; // fixed taxonomy, see prompts/cip-identification.txt
@@ -49,6 +57,14 @@ export interface ClientIdentificationPacket {
   identificationConfidence: Confidence;
   identityConflicts: IdentityConflict[];
   notes: string;
+  // Area C1 — derived, optional, additive. Absent on CIPs produced before this
+  // patch, which stay valid.
+  sector?: BusinessSector;
+  // A REPORT-SAFETY FLAG ONLY. It marks areas where wording needs care and human
+  // review. It is not legal advice, encodes no jurisdiction's rules, and makes no
+  // determination about what the business may or may not lawfully do.
+  regulatorSensitive?: boolean;
+  regulatorSensitiveAreas?: string[];
 }
 
 // Contract 2 — Goal Model
