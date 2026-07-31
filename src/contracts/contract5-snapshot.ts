@@ -24,24 +24,32 @@ export function isConstraintGated(rr: ReasoningResult): boolean {
   return rr.constraintSafety?.status === "requires-rendered-verification";
 }
 
-// Fixed public copy. Deliberately generic: when nothing could be confirmed, a
-// calm honest non-answer is the correct output, and fixed wording is something
-// Product Council can review verbatim before it ever reaches a stranger.
-// No numbers, no internal vocabulary, no claim about the business.
+// Fixed public copy for the gated case. Reviewed wording, not model output, so
+// Product Council can read verbatim what a stranger will see.
+//
+// It leads with the review having happened. Someone who waited two minutes must
+// not feel nothing occurred — the work was done, and the honest result is that
+// one area cannot be responsibly named without a look at the live page. This is
+// a held position, not a failure, and the copy should read that way.
+//
+// No numbers, no internal vocabulary, no claim about the business, nothing
+// asserted that has not been verified. Card lengths follow the v1.3 caps
+// (32/24/24/24/24/16); total sits under the 150-word Snapshot ceiling.
 export function buildUnconfirmedSnapshot(): GrowthSnapshot {
   return {
     primaryConstraint:
-      "We could not confirm enough from your published pages to name your biggest growth constraint yet. " +
-      "What we saw needs a short visual check before we would state it as a finding.",
+      "We reviewed your public pages and gathered enough to see how your business presents itself. " +
+      "One key area still needs visual confirmation before we would responsibly name it as your main constraint.",
     whatIsGoingWell:
-      "Your site was reachable and our review was able to read your main pages without difficulty.",
+      "Your site is reachable, your main pages read clearly, and the way you describe your business came through without difficulty.",
     whyWeThinkThis:
-      "Parts of your site show information that only appears once the page is fully open, which an automated review cannot read reliably.",
+      "Some of what matters most only appears once a page is fully open, so we could not confirm it from the published version alone.",
     howFixingItWillHelp:
-      "A short manual look at those pages would confirm what is actually there, so anything you act on reflects what visitors really see.",
-    nextSteps: "Save or email this snapshot. A strategy call lets us confirm this properly with you.",
+      "A short visual check would let us name your constraint with confidence, so what you act on reflects what visitors actually see.",
+    nextSteps:
+      "Save or email this snapshot. A strategy call is the quickest way for us to confirm this properly and give you the finding.",
     confidencePlainLanguage:
-      "We are not confident enough to call this a finding — it needs a person to look before we would stand behind it.",
+      "We would rather flag this for a closer look than name something we cannot stand behind.",
     verificationRequired: true,
   };
 }

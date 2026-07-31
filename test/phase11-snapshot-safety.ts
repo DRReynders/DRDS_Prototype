@@ -57,10 +57,17 @@ console.log("=== Case 1: gated constraint is not presented as fact ===");
   check("no 'placeholder' claim", !/placeholder/i.test(all));
   check("original constraint text absent", !all.includes("proof-of-results"));
 
-  check("states it could not confirm", /could not confirm/i.test(snap.primaryConstraint));
-  check("asks for a visual check", /visual check/i.test(snap.primaryConstraint));
-  check("does not assert a finding", /before we would state it as a finding/i.test(snap.primaryConstraint));
-  check("confidence copy is honest and calm", /not confident enough/i.test(snap.confidencePlainLanguage));
+  // Copy polish: the visitor must be told the review HAPPENED before being told
+  // what could not be concluded. Someone who waited two minutes should not feel
+  // nothing occurred.
+  check("leads with the review having happened", /^We reviewed your public pages/i.test(snap.primaryConstraint));
+  check("credits what was gathered", /gathered enough/i.test(snap.primaryConstraint));
+  check("names the limit as needing visual confirmation", /visual confirmation/i.test(snap.primaryConstraint));
+  check("does not assert a finding", /before we would responsibly name it/i.test(snap.primaryConstraint));
+  check("explains why, without blaming the site", /only appears once a page is fully open/i.test(snap.whyWeThinkThis));
+  check("offers a concrete route forward", /strategy call/i.test(snap.nextSteps));
+  check("confidence reads as a held position, not a failure", /rather flag this/i.test(snap.confidencePlainLanguage));
+  check("does not sound like the system failed", !/(could not|unable|failed|error|sorry)/i.test(snap.primaryConstraint));
   check("flagged for internal observability", snap.verificationRequired === true);
 }
 
