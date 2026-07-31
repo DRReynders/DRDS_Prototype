@@ -115,7 +115,10 @@ export async function runPipeline(rawUrl: string, onStage?: StageEvent): Promise
 
     const c4 = await track(
       "Contract 4 — Reasoning (CDER)",
-      () => runContract4(log.goalModel!, log.evidencePackage!, corpus),
+      // Area C2 (Council-authorised narrow exception): the CIP is passed through
+      // so regulator-sensitivity stays sourced from one place rather than being
+      // duplicated onto GoalModel and ReasoningResult. Read-only context.
+      () => runContract4(log.goalModel!, log.evidencePackage!, corpus, log.cip),
       (r) =>
         `${r.result.hypothesisConfidence}${r.escalationTrace?.attempted ? " (after 1 escalation attempt)" : ""}`
     );
@@ -123,7 +126,9 @@ export async function runPipeline(rawUrl: string, onStage?: StageEvent): Promise
     log.evidencePackage = c4.pkg; // includes any escalation-gathered entry
     log.escalationTrace = c4.escalationTrace;
 
-    log.growthSnapshot = await track("Contract 5 — Growth Snapshot", () => runContract5(log.reasoningResult!));
+    log.growthSnapshot = await track("Contract 5 — Growth Snapshot", () =>
+      runContract5(log.reasoningResult!, log.cip)
+    );
 
     return finish(log);
   } catch (err) {

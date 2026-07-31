@@ -67,6 +67,25 @@ export interface ClientIdentificationPacket {
   regulatorSensitiveAreas?: string[];
 }
 
+// Bounded Patch Area C2. Renders the CIP's regulator-sensitive fields as prompt
+// input for Contracts 4 and 5. The flag stays sourced from the CIP — it is never
+// copied onto GoalModel or ReasoningResult — so there is exactly one place it can
+// be wrong. Always returns a line, so the "General" case is stated rather than
+// left as a silent gap the model has to interpret.
+export function renderRegulatorContext(cip?: ClientIdentificationPacket): string {
+  if (!cip?.regulatorSensitive) {
+    return "Sector: General. No sector-specific wording constraints apply to this business.";
+  }
+  const areas = cip.regulatorSensitiveAreas?.length
+    ? cip.regulatorSensitiveAreas.join("; ")
+    : "patient testimonials; reviews; before/after imagery; case studies; outcomes; comparative claims; credentials";
+  return [
+    `Sector: ${cip.sector ?? "Healthcare"} (${cip.businessType}). THIS BUSINESS IS REGULATOR-SENSITIVE.`,
+    `Compliance-sensitive recommendation areas: ${areas}.`,
+    "Treat those areas as requiring compliance-aware wording and professional, legal or client review.",
+  ].join("\n");
+}
+
 // Contract 2 — Goal Model
 export interface GoalModel {
   businessGoal: string;

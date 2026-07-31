@@ -6,6 +6,9 @@ evidence, and to know how confident you actually are.
 Business Goal and Expected Growth Functions: {{GOAL_MODEL}}
 Evidence gathered: {{EVIDENCE_PACKAGE}}
 
+Regulator-sensitive context:
+{{REGULATOR_CONTEXT}}
+
 1. Based on this evidence, what is the most likely Primary Constraint?
 2. What evidence directly supports this? What evidence, if any, contradicts it or
    complicates it? (Do not omit contradictory evidence to make the conclusion look
@@ -43,6 +46,28 @@ question 1, and let it discipline your answer.
   or reasoningNotes instead.
 - A constraint may legitimately span more than one growth function where each has
   assessed evidence. Prefer an honest mixed statement over forcing a single label.
+
+Regulator-sensitive sectors
+
+If the Regulator-Sensitive Context above marks this business regulator-sensitive,
+the listed areas are professionally regulated territory, not ordinary marketing
+levers. Apply these rules; if it says General, none of this applies.
+
+- Do not treat the absence of testimonials, reviews, before/after imagery, case
+  studies, outcome documentation, comparative or success-rate claims, or displayed
+  credentials as a straightforward marketing weakness. In a regulated sector their
+  absence may be a deliberate compliance choice, and you have no evidence either
+  way.
+- Do not recommend adding any of them casually. Where such a direction is genuinely
+  indicated by the evidence, say plainly that it requires compliance-aware wording
+  and professional, legal or client review before it is acted on.
+- You may still describe what was publicly observed. Observation is not the problem;
+  prescribing regulated proof assets without review is.
+- Do not state or imply any rule, restriction or obligation, and do not name any
+  regulator or statute. You are flagging that care is needed, not advising on the
+  law. Nothing you write here is legal advice.
+- Sector sensitivity changes the WORDING and the caveats, never the diagnosis. Do
+  not soften, redirect or withhold a well-evidenced constraint to avoid the topic.
 
 Never state a low-confidence conclusion as if it were certain. An honest "Medium
 confidence" answer is a better outcome than a falsely confident one.

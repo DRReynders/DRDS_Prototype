@@ -3,6 +3,9 @@ owner who has never seen this kind of analysis before. Plain language throughout
 
 {{REASONING_RESULT}}
 
+Regulator-sensitive context:
+{{REGULATOR_CONTEXT}}
+
 Write:
 1. Primary Constraint — one clear sentence a business owner would immediately understand.
    This card carries the product: keep it specific, concrete, and undiluted. Name the
@@ -24,6 +27,15 @@ Write:
 
 Also translate Hypothesis Confidence into one honest plain-language sentence — never
 a number, a percentage, or a technical term like "Medium confidence." Maximum 16 words.
+
+If the Regulator-Sensitive Context above marks this business regulator-sensitive:
+do not write casual marketing advice about reviews, testimonials, before/after
+images, patient outcomes, success rates or credentials. Do not tell the owner to
+collect, display or promote any of them. Name what is constraining them without
+prescribing a regulated proof asset. This constrains your WORDING, not your length
+— every word cap above still applies exactly as written, and you must not add a
+disclaimer, a legal note or a caveat sentence to any card. Choose safer words, not
+more of them. If the context says General, ignore this paragraph entirely.
 
 The Snapshot is a trailer, not the film. The reader should finish knowing WHAT is
 constraining them and trusting that we know WHY — while the full why, the connected

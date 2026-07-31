@@ -34,7 +34,9 @@ function questionOrFallback(e: EvidenceEntry): string {
   return e.evidenceValue;
 }
 
-function assemble(log: RunLog, sourceFile: string): string {
+// Exported so Area C2 can test the regulator-sensitive gate offline against a
+// fixture run log — no file written, no report delivered.
+export function assemble(log: RunLog, sourceFile: string): string {
   const cip = log.cip;
   const gm = log.goalModel;
   const rr = log.reasoningResult;
@@ -66,6 +68,22 @@ function assemble(log: RunLog, sourceFile: string): string {
           `⚠ The pipeline flagged identity conflicts — resolve with the client BEFORE writing further: ${cip!.identityConflicts
             .map((c) => `${c.field}: ${c.details}`)
             .join(" · ")}`
+        ),
+        "",
+      ]
+    : [];
+
+  // Area C2: a narrow founder-facing gate, not a legal notice and not a report
+  // section. It names the areas that need compliance-aware wording and routes them
+  // to review. Absent entirely for General businesses and for legacy run logs.
+  const regulatorWarning = cip!.regulatorSensitive
+    ? [
+        F(
+          `⚠ REGULATOR-SENSITIVE SECTOR (${cip!.businessType}). Any recommendation touching ` +
+            `${(cip!.regulatorSensitiveAreas ?? []).join(", ") || "testimonials, reviews, before/after imagery, case studies, outcomes, comparative claims or credentials"} ` +
+            `needs compliance-aware wording and professional, legal or client review before this report is issued. ` +
+            `Do not present the absence of those items as a plain weakness — it may be a deliberate compliance choice. ` +
+            `This is a wording gate, not legal advice, and DRDS does not advise on the rules themselves.`
         ),
         "",
       ]
@@ -220,7 +238,7 @@ us: it is the foundation everything else stands on.*
 - **What the business appears built to achieve:** ${gm!.businessGoal}
 - **Growth functions a business like this depends on:** ${gm!.expectedGrowthFunctions.join(", ")}
 
-${identityWarning.join("\n")}${F(
+${identityWarning.join("\n")}${regulatorWarning.join("\n")}${F(
     `Draft one short observed-narrative paragraph from the CIP. CIP notes for reference (delete): ${cip!.notes || "(none)"}`
   )}
 

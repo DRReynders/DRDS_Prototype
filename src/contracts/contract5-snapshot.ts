@@ -5,7 +5,8 @@
 // ever sees, so they cannot leak into customer-facing copy.
 
 import { llmJson, loadPrompt } from "../llm/client.js";
-import type { GrowthSnapshot, ReasoningResult } from "../types.js";
+import { renderRegulatorContext } from "../types.js";
+import type { ClientIdentificationPacket, GrowthSnapshot, ReasoningResult } from "../types.js";
 
 // Phase 1.1 — Snapshot constraint safety display guard.
 //
@@ -54,9 +55,16 @@ export function buildUnconfirmedSnapshot(): GrowthSnapshot {
   };
 }
 
-export async function runContract5(rr: ReasoningResult): Promise<GrowthSnapshot> {
+export async function runContract5(
+  rr: ReasoningResult,
+  // Area C2: optional and read-only. Supplies sector/regulator-sensitivity so the
+  // copywriter avoids casual marketing advice in restricted categories.
+  cip?: ClientIdentificationPacket
+): Promise<GrowthSnapshot> {
   // Gated constraints never reach the copywriter. Returning before the model
   // call is the guarantee: there is no prompt path that can restate the claim.
+  // Area C2 changes nothing here — the fixed copy makes no claim and no model
+  // call, so it is safe in any sector.
   if (isConstraintGated(rr)) return buildUnconfirmedSnapshot();
 
   const rendered = [
@@ -73,9 +81,15 @@ export async function runContract5(rr: ReasoningResult): Promise<GrowthSnapshot>
 
   // "reasoning" tier: the customer-facing wording is where honesty-of-
   // confidence and specificity live — it gets the stronger configured model.
-  return llmJson<GrowthSnapshot>(loadPrompt("snapshot-copywriting", { REASONING_RESULT: rendered }), {
-    stage: "Contract 5",
-    promptName: "snapshot-copywriting",
-    tier: "reasoning",
-  });
+  return llmJson<GrowthSnapshot>(
+    loadPrompt("snapshot-copywriting", {
+      REASONING_RESULT: rendered,
+      REGULATOR_CONTEXT: renderRegulatorContext(cip),
+    }),
+    {
+      stage: "Contract 5",
+      promptName: "snapshot-copywriting",
+      tier: "reasoning",
+    }
+  );
 }

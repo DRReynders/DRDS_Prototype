@@ -12,7 +12,9 @@ import { llmJson, loadPrompt } from "../llm/client.js";
 import { requestAdditionalEvidence } from "./contract3-evidence.js";
 import type { SiteCorpus } from "../site.js";
 import { allPages, isSiblingTenantUrl } from "../site.js";
+import { renderRegulatorContext } from "../types.js";
 import type {
+  ClientIdentificationPacket,
   EvidencePackage,
   EvidenceReference,
   GoalModel,
@@ -51,12 +53,18 @@ function renderEvidence(pkg: EvidencePackage): string {
   return `${rows.join("\n")}\nAggregate Evidence Coverage: ${pkg.evidenceCoverage}`;
 }
 
-async function reason(gm: GoalModel, pkg: EvidencePackage): Promise<CderResponse> {
+async function reason(
+  gm: GoalModel,
+  pkg: EvidencePackage,
+  cip?: ClientIdentificationPacket
+): Promise<CderResponse> {
   // "reasoning" tier: CDER is the core reasoning act of the whole system.
   const res = await llmJson<CderResponse>(
     loadPrompt("cder-reasoning", {
       GOAL_MODEL: renderGoalModel(gm),
       EVIDENCE_PACKAGE: renderEvidence(pkg),
+      // Area C2: read straight off the CIP, never carried forward on another object.
+      REGULATOR_CONTEXT: renderRegulatorContext(cip),
     }),
     { stage: "Contract 4", promptName: "cder-reasoning", tier: "reasoning" }
   );
@@ -125,9 +133,13 @@ async function reason(gm: GoalModel, pkg: EvidencePackage): Promise<CderResponse
 export async function runContract4(
   gm: GoalModel,
   pkg: EvidencePackage,
-  corpus: SiteCorpus
+  corpus: SiteCorpus,
+  // Area C2: optional and read-only. Supplies sector/regulator-sensitivity so the
+  // reasoning prompt can apply compliance-aware wording. Optional keeps every
+  // existing caller and test valid.
+  cip?: ClientIdentificationPacket
 ): Promise<{ result: ReasoningResult; pkg: EvidencePackage; escalationTrace: RunLog["escalationTrace"] }> {
-  let first = await reason(gm, pkg);
+  let first = await reason(gm, pkg, cip);
   let finalResponse = first;
   let finalPkg = pkg;
   const escalationTrace: RunLog["escalationTrace"] = { attempted: false };
@@ -173,7 +185,7 @@ export async function runContract4(
         finalPkg = gathered.pkg;
         escalationTrace.outcome = siblingNote + gathered.outcome;
 
-        finalResponse = await reason(gm, finalPkg);
+        finalResponse = await reason(gm, finalPkg, cip);
         escalationTrace.confidenceAfter = finalResponse.hypothesisConfidence;
       } else {
         escalationTrace.outcome = `${siblingNote}Escalation considered but not attempted: ${check.reasoning}`;
