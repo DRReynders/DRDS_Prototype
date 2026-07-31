@@ -128,6 +128,39 @@ export interface PageImage {
   lazy: boolean;
 }
 
+// Bounded Patch Area B: platform-neutral link/CTA inventory.
+//
+// The existing `links: string[]` is a crawl input — deduplicated absolute URLs,
+// nothing else. It cannot answer conversion questions: which CTA, what it says,
+// where it points, whether it points anywhere at all. On the iSmile rehearsal
+// the header "WhatsApp Us" button carried href="" on all five pages and was
+// invisible to every layer, because the crawl loop skips falsy hrefs and the
+// rendered tool selected on Elementor classes the site does not use.
+//
+// PageLink is additive and deliberately dumb: it records what each anchor says
+// and where it goes, and classifies the destination. It draws no conclusions —
+// Area A consumes it to build Capture/Response evidence.
+export type LinkType =
+  | "whatsapp"
+  | "tel"
+  | "mailto"
+  | "booking"
+  | "social"
+  | "internal"
+  | "external"
+  | "empty" // href present but blank — a control that goes nowhere
+  | "anchor"; // same-page fragment
+
+export interface PageLink {
+  text: string; // visible anchor text; falls back to aria-label/title/img alt
+  href: string; // raw href exactly as authored — "" is preserved, never dropped
+  resolved: string; // absolute URL where resolvable; "" for empty/unparsable
+  linkType: LinkType;
+  external: boolean; // destination leaves the page's own host
+  pageUrl: string; // the page the anchor was found on
+  inNav: boolean; // sits inside nav/header/[role=navigation]
+}
+
 // A fetched page — the raw material evidence checks work from.
 export interface FetchedPage {
   url: string;
@@ -142,6 +175,10 @@ export interface FetchedPage {
   canonical: string; // rel="canonical" resolved absolute; "" when absent
   dynamicSignals: DynamicSignals;
   images: PageImage[]; // bounded inventory — static fetch sees markup, not pixels
+  // Area B: bounded anchor inventory, parallel to `links` and never a substitute
+  // for it. Optional so every existing FetchedPage construction site stays valid
+  // (same additive pattern as constraintSafety / verificationRequired).
+  pageLinks?: PageLink[];
   fetchedAt: string;
   error?: string;
 }

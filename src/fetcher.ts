@@ -2,13 +2,22 @@
 // prototype (no search API). Every page used by any stage passes through here.
 
 import * as cheerio from "cheerio";
-import { EMPTY_DYNAMIC_SIGNALS, type DynamicSignals, type FetchedPage, type PageImage } from "./types.js";
+import {
+  EMPTY_DYNAMIC_SIGNALS,
+  type DynamicSignals,
+  type FetchedPage,
+  type LinkType,
+  type PageImage,
+  type PageLink,
+} from "./types.js";
 
 const USER_AGENT =
   "DRDS-GrowthSnapshot/0.1 (+https://drdigitalsystems.co.za; automated business growth diagnostic)";
 const FETCH_TIMEOUT_MS = 20_000;
 const MAX_TEXT_CHARS = 20_000;
 const MAX_IMAGE_INVENTORY = 40; // bounded — the run log stays inspectable by hand
+const MAX_LINK_INVENTORY = 200; // bounded — nav duplication alone can run to dozens
+const MAX_LINK_TEXT_CHARS = 120;
 
 // Phase 1 (P1-a): count markers indicating content this fetch cannot see.
 // Runs BEFORE <script> is stripped, so script-based markers (jQuery.numerator)
@@ -50,6 +59,116 @@ function collectImages($: cheerio.CheerioAPI, base: string): PageImage[] {
   return out;
 }
 
+// --- Area B: platform-neutral link / CTA extraction ---
+
+// Destination hosts, matched on the registrable-ish suffix so subdomains count.
+const WHATSAPP_HOSTS = /(^|\.)(wa\.me|whatsapp\.com)$/i;
+const SOCIAL_HOSTS =
+  /(^|\.)(facebook\.com|fb\.com|instagram\.com|twitter\.com|x\.com|linkedin\.com|tiktok\.com|youtube\.com|youtu\.be|pinterest\.com|threads\.net)$/i;
+// Third-party scheduling/booking systems seen in SA service businesses, plus the
+// common self-hosted paths. Deliberately a short honest list, not a taxonomy.
+const BOOKING_HOSTS =
+  /(^|\.)(mygc\.co\.za|recomed\.co\.za|calendly\.com|cal\.com|acuityscheduling\.com|squareup\.com|setmore\.com|simplybook\.(me|it)|fresha\.com|booksy\.com|youcanbook\.me|timify\.com|appointedd\.com|doctolib\.[a-z.]+|zocdoc\.com)$/i;
+const BOOKING_PATH = /\b(book|booking|bookings|appointment|appointments|schedule|scheduling|reserve|timeslot)\b/i;
+
+// Classification is destination-first: a "Book Now" button that opens WhatsApp is
+// a WhatsApp link, because that is where the visitor actually lands. Booking is
+// checked before internal/external so a self-hosted /book-online page is still
+// recognised as a conversion destination.
+export function classifyLink(rawHref: string, resolved: string, pageHost: string): { linkType: LinkType; external: boolean } {
+  const href = rawHref.trim();
+  if (!href) return { linkType: "empty", external: false };
+  if (href.startsWith("#")) return { linkType: "anchor", external: false };
+
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(href)?.[1]?.toLowerCase();
+  if (scheme === "tel") return { linkType: "tel", external: false };
+  if (scheme === "mailto") return { linkType: "mailto", external: false };
+
+  let host = "";
+  let pathAndQuery = href;
+  try {
+    const u = new URL(resolved || href);
+    host = u.hostname.replace(/^www\./i, "").toLowerCase();
+    pathAndQuery = `${u.pathname}${u.search}`;
+  } catch {
+    /* unresolvable — fall through with host "" and the raw href as the path */
+  }
+  const external = host !== "" && host !== pageHost;
+
+  if (WHATSAPP_HOSTS.test(host)) return { linkType: "whatsapp", external };
+  if (BOOKING_HOSTS.test(host) || BOOKING_PATH.test(pathAndQuery)) return { linkType: "booking", external };
+  if (SOCIAL_HOSTS.test(host)) return { linkType: "social", external };
+  return { linkType: external ? "external" : "internal", external };
+}
+
+// Exported so tests exercise the real extractor against fixtures rather than a
+// hand-kept mirror of it (the mirror in phase1-safety.ts is a known drift risk).
+export function collectPageLinks($: cheerio.CheerioAPI, base: string): PageLink[] {
+  let pageHost = "";
+  try {
+    pageHost = new URL(base).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    /* unparsable base — every link then reads as external, which is honest */
+  }
+
+  const out: PageLink[] = [];
+  $("a[href]").each((_, el) => {
+    if (out.length >= MAX_LINK_INVENTORY) return;
+    const $el = $(el);
+    const href = $el.attr("href") ?? ""; // "" is the finding, not a reason to skip
+
+    let resolved = "";
+    try {
+      if (href.trim()) resolved = new URL(href, base).href;
+    } catch {
+      /* unparsable href — resolved stays "", raw href is still recorded */
+    }
+
+    // Icon-only CTAs (social buttons, WhatsApp glyphs) carry no text node, so
+    // fall back through the attributes that name them for a screen reader.
+    const text = (
+      $el.text() ||
+      $el.attr("aria-label") ||
+      $el.attr("title") ||
+      $el.find("img[alt]").first().attr("alt") ||
+      ""
+    )
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, MAX_LINK_TEXT_CHARS);
+
+    const { linkType, external } = classifyLink(href, resolved, pageHost);
+
+    out.push({
+      text,
+      href,
+      resolved,
+      linkType,
+      external,
+      pageUrl: base,
+      inNav: $el.closest('nav, header, [role="navigation"]').length > 0,
+    });
+  });
+  return out;
+}
+
+// Same visible label pointing at two different places — the iSmile case, where
+// "Book Now" reached a different WhatsApp number than the booking CTA elsewhere.
+// Pure and exported for Area A to consume; nothing calls it in this slice.
+export function findRepeatedLabelConflicts(links: PageLink[]): { text: string; hrefs: string[] }[] {
+  const byLabel = new Map<string, Set<string>>();
+  for (const l of links) {
+    const key = l.text.trim().toLowerCase();
+    if (!key) continue;
+    const dest = l.resolved || l.href;
+    if (!byLabel.has(key)) byLabel.set(key, new Set());
+    byLabel.get(key)!.add(dest);
+  }
+  return [...byLabel.entries()]
+    .filter(([, dests]) => dests.size > 1)
+    .map(([text, dests]) => ({ text, hrefs: [...dests] }));
+}
+
 // SSRF guard: this server fetches URLs submitted by strangers, so it must
 // refuse anything that could reach internal/private infrastructure.
 export function isForbiddenTarget(url: URL): string | null {
@@ -80,7 +199,7 @@ export async function fetchPage(url: string): Promise<FetchedPage> {
       return {
         url, finalUrl: url, status: 0, html: "", text: "", title: "",
         metaDescription: "", h1s: [], links: [], canonical: "",
-        dynamicSignals: { ...EMPTY_DYNAMIC_SIGNALS }, images: [],
+        dynamicSignals: { ...EMPTY_DYNAMIC_SIGNALS }, images: [], pageLinks: [],
         fetchedAt: new Date().toISOString(),
         error: forbidden,
       };
@@ -115,6 +234,8 @@ async function fetchPageUnchecked(url: string): Promise<FetchedPage> {
 
     $("script, style, noscript").remove();
 
+    // Crawl input — unchanged. Deduplicated absolute URLs only, and it still
+    // skips empty hrefs on purpose: an href="" is not a page to fetch.
     const links: string[] = [];
     $("a[href]").each((_, el) => {
       const href = $(el).attr("href");
@@ -125,6 +246,10 @@ async function fetchPageUnchecked(url: string): Promise<FetchedPage> {
         /* unparsable href — skip */
       }
     });
+
+    // Area B — conversion inventory, parallel to `links` and never a substitute.
+    // This one keeps the empty hrefs the crawl list correctly discards.
+    const pageLinks = collectPageLinks($, res.url);
 
     const text = $("body").text().replace(/\s+/g, " ").trim().slice(0, MAX_TEXT_CHARS);
 
@@ -143,6 +268,7 @@ async function fetchPageUnchecked(url: string): Promise<FetchedPage> {
       canonical,
       dynamicSignals,
       images,
+      pageLinks,
       fetchedAt,
     };
   } catch (err) {
@@ -159,6 +285,7 @@ async function fetchPageUnchecked(url: string): Promise<FetchedPage> {
       canonical: "",
       dynamicSignals: { ...EMPTY_DYNAMIC_SIGNALS },
       images: [],
+      pageLinks: [],
       fetchedAt,
       error: err instanceof Error ? err.message : String(err),
     };

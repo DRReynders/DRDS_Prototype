@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+<head><title>Zyro-style CTA fixture</title></head>
+<body>
+<!-- Deliberately NOT Elementor/WordPress markup. No .elementor-button, no
+     .wp-block-button__link, no .btn. A CTA extractor that selects on those
+     classes finds nothing here — which is exactly what happened on iSmile. -->
+<header>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/services">Services</a>
+    <a href="/contact">Contact</a>
+    <!-- The iSmile case: the most persistent CTA on the site goes nowhere. -->
+    <a href="" class="grid-cta">WhatsApp Us</a>
+    <a href="https://www.facebook.com/"><img src="/i/fb.svg" alt="Go to Facebook page"></a>
+  </nav>
+</header>
+
+<main>
+  <a href="https://api.whatsapp.com/send?phone=27671623964">WhatsApp us to book</a>
+  <a href="https://www.mygc.co.za/external/practice/416f626b/first-timeslot">Book online now!</a>
+  <a href="tel:+27671623964">Call</a>
+  <a href="mailto:reception@example.co.za">Email</a>
+  <a href="/book-appointment">Book an appointment</a>
+  <a href="#main-content">Skip to content</a>
+  <a href="https://www.instagram.com/examplepractice/" aria-label="Go to Instagram page"></a>
+  <a href="https://external-partner.example.org/info">Partner info</a>
+
+  <!-- Same visible label, two different destinations — the iSmile "Book Now"
+       split, where the high-value page reached a different WhatsApp number. -->
+  <a href="https://api.whatsapp.com/send?phone=27671623964">Book Now</a>
+  <a href="https://wa.me/27738361837?text=Hi">Book Now</a>
+
+  <a href="   ">Blank-but-whitespace CTA</a>
+</main>
+</body>
+</html>
