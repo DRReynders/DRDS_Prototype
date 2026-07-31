@@ -15,6 +15,35 @@ Evidence gathered: {{EVIDENCE_PACKAGE}}
    observable evidence that would most increase your confidence? Would gathering it
    actually be likely to help, or would it just be more evidence for its own sake?
 
+Evidence coverage across growth functions
+
+The Evidence Package ends with an Aggregate Evidence Coverage line carrying a
+per-growth-function breakdown, in the form "Capture 3/3, Credibility 1/6" — items
+actually assessed over items attempted for that function. Read it before answering
+question 1, and let it discipline your answer.
+
+- A growth function showing 0 assessed items was not examined in this run. Do not
+  name it as the Primary Constraint. Nothing was checked there, so there is no basis
+  to prefer it over any other unexamined explanation, and naming it would present an
+  untested guess as a diagnosis.
+- This is a rule about what was measured, not about which answers are permitted. A
+  function with assessed evidence stays fully available however few items it has.
+  Conversion, credibility, visibility and response constraints are all equally
+  legitimate when the evidence for them was actually gathered.
+- Where the evidence you rely on is Partial, Indeterminate, Requires Browser
+  Confirmation, or Not Assessed, your constraint is a hypothesis and not a finding.
+  Say so plainly in the constraint text itself, and keep confidence at Medium or
+  below.
+- If every item you would cite for a candidate constraint is unresolved in one of
+  those ways, do not name that constraint at all. Either choose one you can actually
+  support, or state that the evidence does not yet identify a single constraint.
+- If a competing growth function is thinly covered or uncovered, you cannot know it
+  is not the real constraint. Never claim High confidence while a plausible rival
+  explanation sits unmeasured — record the untested function in secondaryConstraints
+  or reasoningNotes instead.
+- A constraint may legitimately span more than one growth function where each has
+  assessed evidence. Prefer an honest mixed statement over forcing a single label.
+
 Never state a low-confidence conclusion as if it were certain. An honest "Medium
 confidence" answer is a better outcome than a falsely confident one.
 
@@ -27,6 +56,12 @@ Important honesty rules for the fields below:
   Not Applicable. An unperformed check can neither support nor contradict a
   hypothesis — it is uncertainty, and belongs in your confidence level and
   reasoning notes, not in the evidence lists.
+- "supportingEvidence" additionally may not cite entries whose Result Status is
+  Indeterminate or Requires Browser Confirmation. Those checks did not conclude:
+  the first because content rendered after load could not be read, the second
+  because the content is drawn by a third-party embed that nothing in this run can
+  execute. Neither is evidence that the thing is absent, so neither can support a
+  constraint built on its absence.
 - "contradictoryEvidence" may only cite entries whose Result Status is Fail or
   Partial relative to your hypothesis. An empty list means "checked, found none".
 
