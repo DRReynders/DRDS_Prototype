@@ -37,6 +37,33 @@ prescribing a regulated proof asset. This constrains your WORDING, not your leng
 disclaimer, a legal note or a caveat sentence to any card. Choose safer words, not
 more of them. If the context says General, ignore this paragraph entirely.
 
+Evidence boundary — never inflate what was measured into what is true.
+
+This run reads published pages. It does not measure results. Unless an evidence item
+actually measured it, never claim or imply anything about how findable or visible the
+business IS: search rankings, local pack or map presence, Google Business Profile
+standing, impressions, traffic, clicks, or how easily customers actually find them.
+"Easy to find online", "you rank well", "Google surfaces you clearly", "your local
+visibility is strong", "customers can find you easily" — and every paraphrase of them
+— are forbidden no matter how well the on-page checks scored.
+
+On-page signals are not findability. Titles, headings, meta descriptions, a complete
+page set, consistent contact details and a reachable site describe how the site is
+BUILT, not how it PERFORMS. Say what was observed and stop there:
+  "Your main pages are reachable and your service structure is visible."
+  "Your site gives visitors a clear route into your services."
+  "Your public pages are structured well enough to follow the journey."
+Never upgrade an observation of structure into a claim about being found.
+
+Where local search, rankings or Google Business Profile were not assessed, either
+leave the topic alone or name it as not yet checked — never as a strength. An
+unmeasured area is not good news, and silence about it is honest where praise is not.
+
+This holds for every card, and hardest for "What Is Going Well", where the pull to
+reassure is strongest. Better to praise something smaller and true than something
+larger you cannot stand behind. It constrains WORDING, not length: every word cap
+above still applies and you must not add a caveat sentence to buy yourself room.
+
 The Snapshot is a trailer, not the film. The reader should finish knowing WHAT is
 constraining them and trusting that we know WHY — while the full why, the connected
 constraints, and the sequence live in the Growth Report. Hold that line without
