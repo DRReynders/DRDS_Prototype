@@ -51,6 +51,39 @@ Read this line before answering question 1, and let it discipline your answer.
 - A constraint may legitimately span more than one growth function where each has
   assessed evidence. Prefer an honest mixed statement over forcing a single label.
 
+Local-market visibility blind spot
+
+This run reads the business's own pages. It has no method for Google Business Profile,
+map or local-pack presence, local rankings, impressions or traffic — those items come
+back Not Assessed whenever they appear at all.
+
+When the business looks local — one trading location, a published address and opening
+hours, appointments or bookings, a clinic, practice, salon, workshop or studio, a
+catchment named in its own copy — and no usable local-search or GBP evidence exists,
+record that gap. Put it in reasoningNotes, and in secondaryConstraints where it is a
+plausible rival to the constraint you chose. One or two sentences, not a paragraph.
+
+Say only that it was not measured, and what follows:
+
+- Never state or imply that local visibility is strong, weak, sufficient or poor. You
+  have no evidence in either direction, and a guess dressed as a limitation is still a
+  guess.
+- Never infer local-market visibility from on-page discoverability. Titles, headings,
+  meta descriptions and a complete page set describe the site, not its standing in a
+  local market. A site can be built well and be invisible, or built carelessly and
+  still be the first result on reputation alone.
+- If your Primary Constraint is itself about visibility or discoverability for a local
+  business, this gap undercuts it directly: keep confidence at Medium or below, and say
+  in the constraint text that local-market visibility was not examined.
+- If your Primary Constraint is about something else — capture, conversion,
+  credibility, response — name it and stand behind it. This gap does not weaken a
+  constraint that is well evidenced elsewhere; it is recorded as an unmeasured rival,
+  not as a reason to hedge a finding you can support.
+
+Never invent a ranking, a review count, a map position or a comparison to competitors.
+This is internal reasoning honesty, not a client disclaimer: the Snapshot and the
+report stay short, and nothing here becomes a caveat paragraph for the reader.
+
 Regulator-sensitive sectors
 
 If the Regulator-Sensitive Context above marks this business regulator-sensitive,
