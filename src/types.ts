@@ -252,6 +252,88 @@ export interface PageLink {
   inNav: boolean; // sits inside nav/header/[role=navigation]
 }
 
+// Patch 001.5 — escalation link inventory.
+//
+// Run 003's single escalation asked whether a service page's WhatsApp CTA used a
+// working URI, and returned Indeterminate: "cannot be verified from text alone".
+// It was right. Escalation is handed the page's visible TEXT, and an href is not
+// text — the answer sat in the PageLink inventory the whole time, unread.
+//
+// Renders that inventory as compact lines the reasoning model can actually use.
+// Ordered by conversion relevance and hard-bounded, because escalation shares a
+// prompt with the page body and must not crowd it out.
+const LINK_TYPE_RANK: Record<LinkType, number> = {
+  empty: 0, // a control that goes nowhere is the most interesting thing here
+  whatsapp: 1,
+  booking: 2,
+  tel: 3,
+  mailto: 4,
+  external: 6,
+  social: 7,
+  internal: 8,
+  anchor: 9,
+};
+const MAX_INVENTORY_LINES = 40;
+const MAX_URL_CHARS = 120;
+
+export function renderPageLinkInventory(links: PageLink[], maxItems = MAX_INVENTORY_LINES): string {
+  if (!links.length) return "";
+
+  // Collapse exact repeats (the same nav anchor on desktop and mobile markup).
+  const seen = new Set<string>();
+  const unique: PageLink[] = [];
+  for (const l of links) {
+    const key = `${l.text}|${l.href}|${l.inNav}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(l);
+  }
+
+  // One label reaching two destinations is a conversion defect on its own, so
+  // those links are promoted regardless of type.
+  const byLabel = new Map<string, Set<string>>();
+  for (const l of unique) {
+    const label = l.text.trim().toLowerCase();
+    if (!label) continue;
+    if (!byLabel.has(label)) byLabel.set(label, new Set());
+    byLabel.get(label)!.add(l.resolved || l.href);
+  }
+  const conflicts = [...byLabel.entries()].filter(([, d]) => d.size > 1);
+  const conflictLabels = new Set(conflicts.map(([label]) => label));
+
+  const rankOf = (l: PageLink): number =>
+    conflictLabels.has(l.text.trim().toLowerCase()) ? Math.min(LINK_TYPE_RANK[l.linkType], 5) : LINK_TYPE_RANK[l.linkType];
+
+  const ordered = [...unique].sort((a, b) => rankOf(a) - rankOf(b));
+  const shown = ordered.slice(0, maxItems);
+
+  const trunc = (s: string): string => (s.length > MAX_URL_CHARS ? `${s.slice(0, MAX_URL_CHARS)}…` : s);
+  const lines = shown.map((l) => {
+    const where = l.inNav ? " (nav)" : "";
+    const ext = l.external ? " (external)" : "";
+    const dest = l.resolved || l.href;
+    const target = l.linkType === "empty" ? 'href="" — leads nowhere' : `-> ${trunc(dest)}`;
+    return `- [${l.linkType}]${where}${ext} "${l.text || "(no visible label)"}" ${target}`;
+  });
+
+  const conflictLines = conflicts
+    .slice(0, 10)
+    .map(([label, dests]) => `- "${label}" reaches ${dests.size} different destinations: ${[...dests].map(trunc).join("  |  ")}`);
+
+  const pageUrl = links[0]?.pageUrl ?? "";
+  const omitted = ordered.length - shown.length;
+
+  return [
+    `LINK INVENTORY (anchor targets read from the markup of ${pageUrl}; ${unique.length} distinct anchor(s)):`,
+    ...lines,
+    omitted > 0 ? `- … ${omitted} further link(s) omitted; the conversion-relevant ones are listed above.` : "",
+    conflictLines.length ? `\nREPEATED LABELS WITH DIFFERENT DESTINATIONS:\n${conflictLines.join("\n")}` : "",
+    `\nNote: hrefs above are read from markup, not followed. Nothing was opened, called, messaged or submitted.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 // Area A1: the static layer captured no form data at all, so "is there a way to
 // contact this business" could not be answered mechanically. Markup-level only —
 // presence, fields and their labels. Says nothing about whether the form works,

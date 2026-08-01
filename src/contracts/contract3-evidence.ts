@@ -23,6 +23,7 @@ import {
 import { fetchPage } from "../fetcher.js";
 import { llmJson, loadPrompt } from "../llm/client.js";
 import type { SiteCorpus } from "../site.js";
+import { renderPageLinkInventory } from "../types.js";
 import type { EvidenceEntry, EvidencePackage, ResultStatus } from "../types.js";
 
 // Patch 001.2 — coverage semantics.
@@ -155,11 +156,19 @@ export async function requestAdditionalEvidence(
       observation: `Escalation sought: ${evidenceSought}. The attempt was made and honestly failed — it did not reduce uncertainty.`,
     };
   } else {
+    const linkInventory = renderPageLinkInventory(page.pageLinks ?? []);
     const res = await llmJson<{
       results: { evidenceId: string; evidenceValue: string; resultStatus: ResultStatus; observation: string }[];
     }>(
       loadPrompt("evidence-textual", {
-        PAGE_CONTENT: `===== PAGE: ${page.finalUrl} =====\nTITLE: ${page.title}\nBODY TEXT:\n${page.text}`,
+        // Patch 001.5: escalation used to see visible text only. An href is not
+        // text, so a question about a CTA's destination was unanswerable even
+        // though the answer had already been extracted. Appending the bounded
+        // link inventory costs no fetch and no extra call. Pages without a
+        // pageLinks inventory render an empty string and behave exactly as before.
+        PAGE_CONTENT:
+          `===== PAGE: ${page.finalUrl} =====\nTITLE: ${page.title}\nBODY TEXT:\n${page.text}` +
+          (linkInventory ? `\n\n${linkInventory}` : ""),
         EVIDENCE_ITEMS: `- ESC-001: ${evidenceSought}`,
       }),
       { stage: "Contract 3 (escalation gather)", promptName: "evidence-textual", tier: "fast" }
