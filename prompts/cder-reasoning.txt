@@ -124,8 +124,34 @@ Important honesty rules for the fields below:
   because the content is drawn by a third-party embed that nothing in this run can
   execute. Neither is evidence that the thing is absent, so neither can support a
   constraint built on its absence.
-- "contradictoryEvidence" may only cite entries whose Result Status is Fail or
-  Partial relative to your hypothesis. An empty list means "checked, found none".
+- "contradictoryEvidence" holds the counterweight to your constraint, and it is
+  NOT reserved for evidence that refutes it outright. Total contradiction is rare;
+  qualification is common, and both belong in this field. Put an entry here whenever
+  evidence complicates, qualifies, tempers, limits the scope of, or partially
+  contradicts what you concluded — including when the entry's Result Status is Pass.
+  A passing check is often the strongest counterweight there is: if you diagnose
+  broken conversion pathways, a working booking route found on one page is precisely
+  the evidence that your constraint is not universal.
+  Cite it when evidence shows any of:
+    - the problem is real on some pages but not all
+    - a working path exists alongside the broken ones
+    - a strength sits in the same area as the weakness you named
+    - the escalation returned something that tempers the constraint
+    - a rival explanation remains plausible on evidence that concluded
+  Each entry must cite a real Evidence ID from the package above with a short "why".
+  Never invent counter-evidence, and never manufacture balance — if nothing genuinely
+  complicates the constraint, leave the list empty and mean it.
+  Entries may cite any status that CONCLUDED — Pass, Partial or Fail. An
+  Indeterminate or Requires Browser Confirmation item can no more contradict a
+  hypothesis than support one.
+- Recording counter-evidence does not retract your constraint. A constraint that
+  survives an honest qualification is stronger than one that was never tested, and
+  the right response to a tempering finding is usually to keep the constraint, narrow
+  its scope, and hold confidence at Medium — not to abandon it.
+- reasoningNotes is for the nuance and the argument; contradictoryEvidence is for the
+  structured references. Explaining a complication in the notes while leaving the list
+  empty is not enough — anything reading the fields sees "checked, found none" when
+  you found something.
 
 Respond with a single JSON object, no other text:
 {

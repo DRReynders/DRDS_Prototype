@@ -96,10 +96,16 @@ async function reason(
   const proposedSupport = res.supportingEvidence ?? [];
   const dropped = proposedSupport.filter((r) => !isReportSafeSupport(r.evidenceId)).map((r) => r.evidenceId);
   res.supportingEvidence = proposedSupport.filter((r) => isReportSafeSupport(r.evidenceId));
-  res.contradictoryEvidence = (res.contradictoryEvidence ?? []).filter((r) => {
-    const s = byId.get(r.evidenceId)?.resultStatus;
-    return s === "Fail" || s === "Partial";
-  });
+  // Patch 001.7: this filter used to admit only Fail and Partial, on the
+  // assumption that counter-evidence is always a failing check. It is not. The
+  // strongest counterweight to "conversion pathways are broken" is a check that
+  // PASSED — a working booking route on some page, proving the defect is not
+  // universal. Run 004's ESC-001 was exactly that, resolved to Pass, reasoned
+  // about correctly in prose, and then stripped from the structured field by this
+  // line. The honest test is the same one applied to support: did the check
+  // conclude? An Indeterminate or Requires Browser Confirmation item can no more
+  // contradict a hypothesis than support one.
+  res.contradictoryEvidence = (res.contradictoryEvidence ?? []).filter((r) => isReportSafeSupport(r.evidenceId));
 
   // The safety gate. A constraint must not rest MAINLY on evidence a direct
   // fetch cannot stand behind — "mainly", not "entirely", because a single
