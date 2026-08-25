@@ -74,20 +74,28 @@ static hosting serves these as directory URLs with no rewrite rules.
 The live WordPress **Strategy Call** route is not replaced or redirected by this
 site. It stays operational and linked until `/start/` genuinely works.
 
-## Known blocker: CORS
+## Browser origin boundary (CORS)
 
-The Snapshot backend currently sends **no CORS headers** and does not handle
-`OPTIONS`. Verified against production:
+The backend now has an explicit-origin CORS boundary (`src/web/cors.ts`), added
+in Website V2 Phase 2 **on this branch**. It is not yet deployed: production
+still runs the pre-boundary build, so `/snapshot/` pointed at production will
+still show the honest "temporarily unavailable" state until that ships.
+
+For the boundary to permit this site, the backend needs its own environment
+variable set — see the repository-root `.env.example`:
 
 ```
-OPTIONS /api/snapshot   →  404, no Access-Control-Allow-Origin
-POST    /api/snapshot   →  400, no Access-Control-Allow-Origin
+SNAPSHOT_ALLOWED_ORIGINS=http://localhost:4321        # local Astro dev
+SNAPSHOT_ALLOWED_ORIGINS=https://drdigitalsystems.co.za   # production site
 ```
 
-So a browser on any origin other than the backend's own will refuse the request,
-and `/snapshot/` will show the honest "temporarily unavailable" state. **A small,
-bounded backend patch is required** before this page can function — see the
-Phase 1 report. That patch is deliberately not part of this scaffold.
+Exact origins only. No wildcard, and an unset value allows no browser origin at
+all — it fails closed. Requests with no `Origin` header (CLI, direct API
+inspection) are unaffected and need no entry.
+
+To run the two locally: start the backend with `SNAPSHOT_ALLOWED_ORIGINS`
+including `http://localhost:4321`, set `PUBLIC_SNAPSHOT_API_ORIGIN` here to
+`http://localhost:3000`, then `npm run dev`.
 
 ## JavaScript
 
