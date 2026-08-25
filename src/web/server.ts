@@ -11,7 +11,14 @@ import { sendSnapshotEmail, EmailNotConfiguredError } from "../email.js";
 import { loadEnv } from "../llm/client.js";
 import { findRunLogByRunId, updateRunLog } from "../logger.js";
 import { runPipeline } from "../pipeline.js";
-import { dailyBudgetCheck, rateLimitCheck, recordSpend } from "./guards.js";
+import {
+  dailyBudgetCheck,
+  deriveClientKey,
+  guardConfigSummary,
+  rateLimitCheck,
+  recordSpend,
+  UNAVAILABLE_MESSAGE,
+} from "./guards.js";
 
 const WEB_DIR = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
@@ -73,10 +80,12 @@ function clientFacingFailureMessage(failure: { stage: string; reason: string }):
           "We couldn't gather enough information from that site to complete the analysis. Please check the website is publicly accessible and try again.",
       };
     case "configuration":
-      return {
-        state: "unavailable",
-        message: "The Growth Audit isn't fully set up in this environment yet, so the analysis couldn't run.",
-      };
+      // One state, one message. The previous wording ("isn't fully set up in
+      // this environment yet") described our configuration to a stranger who can
+      // neither act on it nor needs to know it — and the pre-run guard now
+      // refuses with UNAVAILABLE_MESSAGE for the same class of problem, so the
+      // two paths said different things about the same state.
+      return { state: "unavailable", message: UNAVAILABLE_MESSAGE };
     case "budget":
       return {
         state: "error",
@@ -119,10 +128,13 @@ function logRunSummary(log: {
   );
 }
 
+// Rate-limit identity. Railway's public-networking contract supplies the
+// client's remote address in X-Real-IP; caller-controlled X-Forwarded-For is
+// deliberately not consulted. The derivation lives in guards.ts so it can be
+// exercised without booting a server; this passes the raw inputs through and
+// forwards the one-per-process source diagnostic to stdout.
 function clientIp(req: IncomingMessage): string {
-  const fwd = req.headers["x-forwarded-for"];
-  if (typeof fwd === "string" && fwd.length) return fwd.split(",")[0].trim();
-  return req.socket.remoteAddress ?? "unknown";
+  return deriveClientKey(req.headers["x-real-ip"], req.socket.remoteAddress, (line) => console.log(line));
 }
 
 async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -141,9 +153,16 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
     json(res, 429, { type: "error", state: "rate_limited", message: rate.message });
     return;
   }
+  // Distinct machine-readable outcomes: "daily_capacity" means the configured
+  // budget is spent, "unavailable" means the budget itself could not be read and
+  // the run is refused before any provider call. Both are 503; only the state
+  // tells them apart.
   const budget = dailyBudgetCheck();
   if (!budget.allowed) {
-    json(res, 503, { type: "error", state: "daily_capacity", message: budget.message });
+    if (budget.state === "unavailable") {
+      console.error("PV_GUARD_REFUSED " + guardConfigSummary().summary);
+    }
+    json(res, 503, { type: "error", state: budget.state, message: budget.message });
     return;
   }
   if (busy) {
@@ -182,7 +201,12 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
     });
 
     if (log.llmUsage && log.llmUsage.totals.estimatedCostUsd > 0) {
-      recordSpend(log.llmUsage.totals.estimatedCostUsd);
+      // Bookkeeping runs after the Snapshot already exists, so a ledger failure
+      // is logged for the operator and never allowed to destroy a finished
+      // result. An unrecorded run leaves the ledger unreadable or stale, which
+      // the next request's budget check will refuse on — fail-closed, not silent.
+      const spend = recordSpend(log.llmUsage.totals.estimatedCostUsd);
+      if (!spend.recorded) console.error("PV_SPEND_NOT_RECORDED " + spend.reason);
     }
     logRunSummary(log);
 
@@ -296,4 +320,8 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, () => {
   const provider = (process.env.DRDS_LLM_PROVIDER || "anthropic").toLowerCase();
   console.log(`DRDS prototype: http://localhost:${PORT}  (LLM provider: ${provider}, email: ${process.env.RESEND_API_KEY ? "configured" : "NOT configured"})`);
+  // Surface guard configuration at boot, so a misconfigured deploy is visible in
+  // the log viewer immediately rather than at the moment a visitor is refused.
+  const guards = guardConfigSummary();
+  (guards.ok ? console.log : console.error)("PV_GUARD_CONFIG " + guards.summary);
 });
