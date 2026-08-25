@@ -1,0 +1,61 @@
+---
+import SiteHeader from "../components/SiteHeader.astro";
+import SiteFooter from "../components/SiteFooter.astro";
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+  /** Set false on pages that should not be indexed. Defaults to indexable. */
+  index?: boolean;
+}
+
+const { title, description, index = true } = Astro.props;
+
+// Canonical URLs come from `site` in astro.config.mjs, so they are correct in
+// the build and never hard-coded per page.
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const path = Astro.url.pathname;
+---
+
+<!doctype html>
+<html lang="en-ZA">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Zoom is never disabled. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical.href} />
+    {index ? null : <meta name="robots" content="noindex, follow" />}
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical.href} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    {/* Page metadata seam: a page can contribute its own head elements
+        (preconnect, structured data, page-specific meta) without this layout
+        needing to know about them. */}
+    <slot name="head" />
+  </head>
+
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <SiteHeader path={path} />
+
+    <main id="main" tabindex="-1">
+      <slot />
+    </main>
+
+    <SiteFooter />
+  </body>
+</html>
+
+<style>
+  /* `tabindex="-1"` makes the skip link's target focusable without putting it
+     in the tab order; the outline is suppressed because focus here is
+     programmatic, not a keyboard user navigating to it. */
+  main:focus {
+    outline: none;
+  }
+</style>

@@ -1,0 +1,256 @@
+/* Global baseline. Deliberately small: structure, type scale, and the
+ * interaction primitives every page needs. Component-level visual design is a
+ * later pass. */
+
+@import "./tokens.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+  /* Mobile-first: nothing may push the page sideways. */
+  overflow-x: hidden;
+}
+
+/* ---- Layout primitives ---- */
+
+.wrap {
+  width: 100%;
+  max-width: 68rem;
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.stack > * + * {
+  margin-block-start: var(--stack);
+}
+
+.prose {
+  max-width: var(--measure);
+}
+
+section {
+  padding-block: var(--section-gap);
+}
+
+/* ---- Type ---- */
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.14;
+  margin: 0;
+  text-wrap: balance;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: clamp(2rem, 5vw, 3.25rem);
+}
+h2 {
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+}
+h3 {
+  font-size: clamp(1.15rem, 2vw, 1.35rem);
+}
+
+h4 {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--slate);
+  margin: 0;
+}
+
+p {
+  margin: 0;
+  max-width: var(--measure);
+}
+
+.lede {
+  font-size: clamp(1.05rem, 1.6vw, 1.25rem);
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+.kicker {
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--gold);
+  font-weight: 600;
+  margin: 0;
+}
+.kicker::before {
+  content: "──── ";
+  letter-spacing: 0;
+}
+
+.muted {
+  color: var(--slate);
+  font-size: 0.9rem;
+}
+
+a {
+  color: var(--gold);
+  text-underline-offset: 3px;
+}
+
+/* ---- Interaction ---- */
+
+:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--gutter);
+  top: 0;
+  transform: translateY(-120%);
+  z-index: 100;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  text-decoration: none;
+}
+.skip-link:focus {
+  transform: translateY(0.5rem);
+}
+
+.button,
+button {
+  font-family: inherit;
+  font-size: 0.95rem;
+  min-height: var(--tap-target);
+  padding: 0.7rem 1.4rem;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.button--primary {
+  background: var(--gold-fill);
+  color: var(--navy);
+  font-weight: 600;
+  border-color: var(--gold-fill);
+}
+.button--primary:hover {
+  background: #b8963f;
+  border-color: #b8963f;
+}
+
+.button--secondary {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--rule);
+}
+.button--secondary:hover {
+  border-color: var(--slate);
+}
+
+button:disabled,
+.button[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: default;
+}
+
+label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+input,
+textarea {
+  font-family: inherit;
+  font-size: 1rem;
+  width: 100%;
+  min-height: var(--tap-target);
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+}
+input:focus-visible,
+textarea:focus-visible {
+  border-color: var(--slate);
+}
+
+.field-hint {
+  font-size: 0.82rem;
+  color: var(--slate);
+}
+
+/* ---- Panels ---- */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: clamp(1.25rem, 3vw, 2rem);
+}
+
+.notice {
+  border-left: 3px solid var(--rule);
+  padding: 0.75rem 0 0.75rem 1rem;
+}
+.notice[data-tone="stop"] {
+  border-left-color: var(--stop);
+}
+.notice[data-tone="warn"] {
+  border-left-color: var(--warn);
+}
+.notice[data-tone="info"] {
+  border-left-color: var(--gold-fill);
+}
+
+.rule {
+  border: 0;
+  border-top: 1px solid var(--rule-soft);
+  margin-block: var(--section-gap);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* ---- Motion ---- *
+ * There is no mandatory animation anywhere on this site, and no scroll-jacking.
+ * This block is the guarantee, not a courtesy. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

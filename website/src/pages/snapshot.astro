@@ -1,0 +1,392 @@
+---
+// The public Growth Snapshot surface. STRUCTURE ONLY in this phase.
+//
+// TEMPORARY COPY — placeholder wording to prove the structure.
+//
+// Every state the run can end in has a real container here, present in the
+// served HTML and revealed by the client script. Nothing is injected as a
+// string of markup at runtime, so the page's structure is auditable by reading
+// the source rather than by watching it run.
+//
+// Product boundary, enforced by construction: this page RENDERS what the
+// backend returns. It does not compute, rank, re-word or second-guess a
+// constraint. The judgement lives in the Growth Report.
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { ROUTES, STRATEGY_CALL_URL, SNAPSHOT_API_ORIGIN } from "../lib/config";
+
+// Read at BUILD time. Two jobs: a missing or invalid API origin fails the build
+// rather than shipping a page whose primary action silently does nothing, and
+// the resolved origin warms the connection before the visitor submits.
+const apiOrigin = SNAPSHOT_API_ORIGIN;
+---
+
+<link rel="preconnect" href={apiOrigin} crossorigin slot="head" />
+
+<BaseLayout
+  title="Growth Snapshot — DR Digital Systems"
+  description="Enter a business website and receive a Growth Snapshot: a short, specific read of what publicly observable evidence suggests is limiting growth."
+>
+  <section class="intro">
+    <div class="wrap stack">
+      <p class="kicker">Growth Snapshot</p>
+      <h1>See what your public evidence says about your growth</h1>
+      <p class="lede prose">
+        Enter your business website. We read what is publicly observable and report the single
+        constraint the evidence points to most strongly.
+      </p>
+
+      <!-- INPUT + SUBMIT.
+           A real <form> with a real submit button, so the control is keyboard-
+           operable and announced correctly before any script runs. -->
+      <form id="snapshot-form" class="snapshot-form" novalidate>
+        <div class="snapshot-form__field">
+          <label for="business-url">Your business website</label>
+          <input
+            id="business-url"
+            name="url"
+            type="text"
+            inputmode="url"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            placeholder="yourbusiness.co.za"
+            aria-describedby="url-hint"
+            required
+          />
+          <p id="url-hint" class="field-hint">
+            Free. Based on publicly observable evidence only — nothing private is accessed.
+          </p>
+        </div>
+        <button id="snapshot-submit" class="button button--primary" type="submit">
+          Run my Growth Snapshot
+        </button>
+      </form>
+
+      <noscript>
+        <div class="notice" data-tone="info">
+          <p>
+            The Growth Snapshot runs in your browser and needs JavaScript enabled. If you would rather
+            not enable it, <a href={STRATEGY_CALL_URL}>book a Strategy Call</a> and we will go through
+            this with you directly.
+          </p>
+        </div>
+      </noscript>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <!-- WAITING STATE.
+         Milestones are appended only as the backend reports a stage genuinely
+         starting. There is no percentage, no progress bar and no predicted
+         finish time, because none of those would be true. -->
+    <section id="state-waiting" class="state" hidden aria-labelledby="waiting-heading">
+      <div class="stack">
+        <h2 id="waiting-heading" class="state__heading">Reading your public evidence</h2>
+        <p class="muted">This usually takes a minute or two. You can leave this tab open.</p>
+        <!-- Each milestone is announced as it genuinely occurs, so a screen
+             reader user knows work is progressing without watching the page. -->
+        <ul id="milestones" class="milestones" aria-live="polite" aria-atomic="false"></ul>
+      </div>
+    </section>
+
+    <!-- FAILURE STATE. Copy comes from src/lib/snapshot-states.ts, never from
+         raw backend text. -->
+    <section id="state-failure" class="state" hidden aria-labelledby="failure-heading">
+      <div class="stack">
+        <h2 id="failure-heading" class="state__heading">We couldn't complete this</h2>
+        <!-- role="status" so a failure is announced, not silently swapped in. -->
+        <div class="notice" data-tone="warn" role="status" aria-live="polite">
+          <p id="failure-message"></p>
+        </div>
+        <p id="failure-human-path" hidden>
+          In the meantime you can <a href={STRATEGY_CALL_URL}>book a Strategy Call</a> and we will go
+          through this with you directly.
+        </p>
+        <button id="failure-retry" class="button button--secondary" type="button">Try again</button>
+      </div>
+    </section>
+
+    <!-- RESULT STATE. Five cards, in the reviewed order: the claim, then the
+         evidence for it, then balancing context, then stakes, then action. -->
+    <section id="state-result" class="state" hidden aria-labelledby="result-heading">
+      <article class="panel stack">
+        <p class="kicker">Growth Snapshot</p>
+        <!-- tabindex="-1" so focus can be moved here when the result arrives:
+             the visitor is taken to the finding rather than left at the form. -->
+        <h2 id="result-heading" class="result__business" tabindex="-1"></h2>
+        <p id="result-prepared" class="muted"></p>
+
+        <p id="result-mock" class="notice" data-tone="warn" hidden>
+          Mock output — structural testing only, not a real analysis of this business.
+        </p>
+
+        <blockquote class="result__constraint">
+          <p id="result-constraint"></p>
+        </blockquote>
+
+        <div class="result__section">
+          <h3>Why we think this</h3>
+          <p id="result-why"></p>
+        </div>
+        <div class="result__section">
+          <h3>What is going well</h3>
+          <p id="result-well"></p>
+        </div>
+        <div class="result__section">
+          <h3>What changes if this is fixed</h3>
+          <p id="result-help"></p>
+        </div>
+        <div class="result__section">
+          <h3>Next steps</h3>
+          <p id="result-next"></p>
+        </div>
+
+        <p id="result-confidence" class="result__confidence"></p>
+      </article>
+
+      <!-- GROWTH REPORT CTA — placed after the result, where the visitor has
+           just seen observable evidence and the natural next question is what it
+           means. One primary action, not a menu. -->
+      <aside class="handoff">
+        <h3>This is observation. The Growth Report is diagnosis.</h3>
+        <p class="prose">
+          A Growth Snapshot states what can be observed. A Growth Report decides what is actually
+          limiting your growth, what is connected to it, and the order to address it in.
+        </p>
+        <a
+          class="button button--primary"
+          href={ROUTES.start}
+          id="report-cta"
+          data-analytics="report_cta_clicked"
+        >
+          Start a Growth Report
+        </a>
+      </aside>
+    </section>
+  </div>
+
+  <!--
+    THE ONE JAVASCRIPT ISLAND ON THIS SITE.
+
+    Why it earns its place: the Snapshot is a 1-2 minute streamed job. Without
+    client JS the visitor would either stare at a blocked page load or the site
+    would need a server runtime to proxy the stream — and the approved
+    architecture is static-first with no SSR and no reverse proxy at launch.
+    This script is the smallest thing that satisfies that.
+
+    What it deliberately is NOT: a framework, a router, a state library, or a
+    hydration boundary. It is a form handler. The page is fully rendered HTML
+    before it runs, and every state container already exists in the document.
+  -->
+  <script>
+    import { runSnapshot } from "../lib/snapshot-client";
+    import {
+      durationBucket,
+      track,
+      SNAPSHOT_STARTED,
+      SNAPSHOT_COMPLETED,
+      SNAPSHOT_FAILED,
+      REPORT_CTA_CLICKED,
+    } from "../lib/analytics-events";
+
+    const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
+
+    const form = $<HTMLFormElement>("snapshot-form");
+    const input = $<HTMLInputElement>("business-url");
+    const submit = $<HTMLButtonElement>("snapshot-submit");
+    const waiting = $<HTMLElement>("state-waiting");
+    const failure = $<HTMLElement>("state-failure");
+    const result = $<HTMLElement>("state-result");
+    const milestones = $<HTMLUListElement>("milestones");
+
+    const show = (section: HTMLElement | null): void => {
+      for (const el of [waiting, failure, result]) el.hidden = el !== section;
+    };
+
+    const setText = (id: string, value: string | undefined): void => {
+      // textContent, never innerHTML: backend output is data, not markup.
+      $(id).textContent = value ?? "";
+    };
+
+    function renderFailure(message: string, offerHumanPath: boolean): void {
+      setText("failure-message", message);
+      $("failure-human-path").hidden = !offerHumanPath;
+      show(failure);
+      $<HTMLButtonElement>("failure-retry").focus();
+    }
+
+    let running = false;
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (running) return;
+
+      const url = input.value.trim();
+      if (!url) {
+        renderFailure("Please enter your business website address.", false);
+        input.focus();
+        return;
+      }
+
+      running = true;
+      submit.disabled = true;
+      form.setAttribute("aria-busy", "true");
+      milestones.replaceChildren();
+      show(waiting);
+      // No business URL is ever sent as an analytics property.
+      track(SNAPSHOT_STARTED, { entry: "snapshot_page" });
+      const startedAt = performance.now();
+
+      await runSnapshot(url, {
+        onMilestone(label) {
+          const item = document.createElement("li");
+          item.textContent = label;
+          milestones.append(item);
+        },
+        onResult(payload) {
+          const s = payload.snapshot;
+          setText("result-heading", payload.businessName || "Your business");
+          setText(
+            "result-prepared",
+            `Prepared ${new Date().toLocaleDateString("en-ZA", {
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            })} · based on publicly observable evidence`
+          );
+          $("result-mock").hidden = payload.mockMode !== true;
+          setText("result-constraint", s.primaryConstraint);
+          setText("result-why", s.whyWeThinkThis);
+          setText("result-well", s.whatIsGoingWell);
+          setText("result-help", s.howFixingItWillHelp);
+          setText("result-next", s.nextSteps);
+          setText("result-confidence", s.confidencePlainLanguage);
+          show(result);
+          $("result-heading").focus();
+          track(SNAPSHOT_COMPLETED, {
+            durationBucket: durationBucket(performance.now() - startedAt),
+            gated: s.verificationRequired === true,
+          });
+        },
+        onFailure(f) {
+          renderFailure(f.message, f.offerHumanPath);
+          track(SNAPSHOT_FAILED, { state: f.state });
+        },
+      });
+
+      running = false;
+      submit.disabled = false;
+      form.removeAttribute("aria-busy");
+    });
+
+    $("failure-retry").addEventListener("click", () => {
+      show(null);
+      input.focus();
+    });
+
+    $("report-cta").addEventListener("click", () => {
+      track(REPORT_CTA_CLICKED, { from: "snapshot_result" });
+    });
+  </script>
+</BaseLayout>
+
+<style>
+  .intro {
+    padding-block: clamp(2.5rem, 7vw, 4rem) 0;
+  }
+
+  .snapshot-form {
+    display: grid;
+    gap: 1rem;
+    align-items: end;
+    max-width: 34rem;
+    margin-block-start: 1rem;
+  }
+
+  @media (min-width: 34rem) {
+    .snapshot-form {
+      grid-template-columns: 1fr auto;
+    }
+    .snapshot-form__field {
+      grid-column: 1 / -1;
+    }
+    .snapshot-form button {
+      grid-column: 1;
+      justify-self: start;
+    }
+  }
+
+  .snapshot-form__field {
+    display: grid;
+    gap: 0.4rem;
+  }
+
+  .state {
+    padding-block: var(--section-gap) 0;
+  }
+
+  .state__heading {
+    font-size: clamp(1.2rem, 2.4vw, 1.5rem);
+  }
+
+  .milestones {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.4rem;
+  }
+
+  .milestones li {
+    color: var(--ink-2);
+    font-size: 0.94rem;
+    padding-inline-start: 1.4rem;
+    position: relative;
+  }
+
+  .milestones li::before {
+    content: "✓";
+    position: absolute;
+    inset-inline-start: 0;
+    color: var(--gold);
+  }
+
+  .result__business {
+    font-size: clamp(1.3rem, 3vw, 1.75rem);
+  }
+
+  .result__constraint {
+    margin: 0;
+    padding-block: 1.25rem;
+    border-top: 1px solid var(--gold-fill);
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .result__constraint p {
+    font-family: var(--font-display);
+    font-size: clamp(1.1rem, 2.4vw, 1.35rem);
+    line-height: 1.45;
+    margin: 0;
+  }
+
+  .result__section {
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .result__confidence {
+    font-style: italic;
+    color: var(--slate);
+    font-size: 0.9rem;
+  }
+
+  .handoff {
+    margin-block-start: 1.5rem;
+    padding: clamp(1.25rem, 3vw, 2rem);
+    background: var(--surface-2);
+    border-radius: var(--radius);
+    display: grid;
+    gap: 0.75rem;
+    justify-items: start;
+  }
+</style>

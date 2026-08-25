@@ -1,0 +1,134 @@
+---
+// Homepage SHELL. Structure only.
+//
+// TEMPORARY COPY — every sentence on this page is placeholder wording written to
+// prove the structure, not final marketing copy. Product Council owns the final
+// text. Nothing here claims a result, a client outcome, a track record or any
+// social proof, because none of that exists to claim: DRDS is in operational
+// public beta.
+//
+// The structural job of this page, per the approved Instrument-First Hybrid:
+//   1. say what DRDS sells in one clear sentence;
+//   2. give the visitor ONE obvious action — run the Growth Snapshot;
+//   3. place the Growth Report as the paid diagnosis, and the Growth Blueprint
+//      as the deeper path taken only where warranted.
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { ROUTES } from "../lib/config";
+---
+
+<BaseLayout
+  title="DR Digital Systems — Growth Systems Company"
+  description="DRDS diagnoses what is actually limiting a business's growth, using publicly observable evidence, and sequences what to do about it."
+>
+  <!-- ONE sentence, ONE action. Everything else on this page is subordinate. -->
+  <section class="hero">
+    <div class="wrap stack">
+      <p class="kicker">Growth Systems Company</p>
+      <h1>We diagnose what is actually limiting your growth — and in what order to fix it.</h1>
+      <p class="lede prose">
+        Most businesses invest in isolated activities and wonder why growth never compounds. DRDS starts
+        with evidence rather than activity.
+      </p>
+
+      <div class="hero__action">
+        <a class="button button--primary" href={ROUTES.snapshot} data-analytics="snapshot_intent" data-source="home_hero">
+          Run a Growth Snapshot
+        </a>
+        <p class="muted">Free. Based on publicly observable evidence. No sign-up.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- The ladder. Ordered, because the order IS the product: observation, then
+       diagnosis, then deeper investigation only where it is warranted. -->
+  <section aria-labelledby="ladder-heading">
+    <div class="wrap stack">
+      <h2 id="ladder-heading">How DRDS works</h2>
+
+      <ol class="ladder">
+        <li class="ladder__item panel">
+          {/* An eyebrow label, not a heading — making it an <h4> before an <h3>
+              would break the document's heading order for no semantic gain. */}
+          <p class="eyebrow">Free · Observation</p>
+          <h3>Growth Snapshot</h3>
+          <p>
+            An automated read of what is publicly observable about your business, and the single
+            constraint that evidence points to most strongly.
+          </p>
+          <p class="muted">
+            It states what can be observed. It does not decide your main constraint, and it does not
+            tell you where to invest.
+          </p>
+          <p><a href={ROUTES.snapshot}>Run a Growth Snapshot</a></p>
+        </li>
+
+        <li class="ladder__item panel">
+          <p class="eyebrow">Paid · Diagnosis</p>
+          <h3>Growth Report</h3>
+          <p>
+            The judgement layer. A human diagnosis of your main constraint, the constraints connected to
+            it, and the order in which they should be addressed — with an Owner Report, a Practitioner
+            Brief and a walkthrough.
+          </p>
+          <p class="muted">Available by enquiry while DRDS works with a limited number of early clients.</p>
+          <p><a href={ROUTES.start}>Start a Growth Report</a></p>
+        </li>
+
+        <li class="ladder__item panel">
+          <p class="eyebrow">Deeper · Investigation</p>
+          <h3>Growth Blueprint</h3>
+          <p>
+            A deeper investigation, undertaken only where the Growth Report shows it is warranted. It is
+            never the default next step.
+          </p>
+          <p class="muted">Available by enquiry for selected early engagements.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .hero {
+    padding-block: clamp(3rem, 9vw, 6rem) var(--section-gap);
+  }
+
+  .hero__action {
+    display: grid;
+    gap: 0.75rem;
+    justify-items: start;
+    margin-block-start: 1rem;
+  }
+
+  .ladder {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 1rem;
+  }
+
+  /* Three abreast only when there is genuinely room. Mobile-first: one column,
+     no horizontal scroll at any width. */
+  @media (min-width: 60rem) {
+    .ladder {
+      grid-template-columns: repeat(3, 1fr);
+      align-items: start;
+    }
+  }
+
+  .ladder__item {
+    display: grid;
+    gap: 0.6rem;
+    align-content: start;
+  }
+
+  .eyebrow {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--slate);
+    margin: 0;
+  }
+</style>

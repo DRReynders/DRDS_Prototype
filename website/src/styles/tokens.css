@@ -1,0 +1,98 @@
+/* DRDS design tokens.
+ *
+ * The foundation for the later design pass, not the design pass itself. Every
+ * colour, size and rhythm value the site uses is named here so the visual work
+ * can happen by changing tokens rather than hunting through components.
+ *
+ * Palette is the established DRDS language: navy ground, charcoal text, muted
+ * gold as the single accent. Note --gold vs --gold-fill — gold on a light
+ * ground is deepened to #9a7b2e because the brand gold (#c9a84c) fails contrast
+ * as text on cream or white. That was a real accessibility fix on the live site
+ * and it is inherited here deliberately rather than rediscovered later.
+ */
+
+:root {
+  /* Ground and surface */
+  --ground: #f8f7f4;
+  --surface: #ffffff;
+  --surface-2: #f2f0ea;
+
+  /* Ink */
+  --ink: #0d1b2a;
+  --ink-2: #33475c;
+  --slate: #5c6b7d;
+
+  /* Accent — see note above */
+  --gold: #9a7b2e; /* gold as TEXT on light grounds */
+  --gold-fill: #c9a84c; /* gold as a FILL or on navy */
+
+  /* Structure */
+  --rule: #dcd8ce;
+  --rule-soft: #e8e5dd;
+
+  /* Inverted block (navy sections) */
+  --navy: #0d1b2a;
+  --navy-ink: #eef1f5;
+  --navy-soft: #a8b8c8;
+
+  /* Status — semantic, never decorative, never the accent */
+  --ok: #2f6b4f;
+  --warn: #8a6414;
+  --stop: #8f3320;
+
+  /* Type */
+  --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-body: Inter, -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", monospace;
+
+  /* Rhythm */
+  --measure: 68ch;
+  --gutter: clamp(1.25rem, 4vw, 2rem);
+  --section-gap: clamp(3.5rem, 8vw, 6rem);
+  --stack: 1.25rem;
+  --radius: 4px;
+
+  /* Interaction */
+  --tap-target: 44px;
+  --focus-ring: 2px solid var(--gold);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0b1622;
+    --surface: #121f2d;
+    --surface-2: #17273a;
+    --ink: #e9eef4;
+    --ink-2: #c2cedb;
+    --slate: #93a3b5;
+    --gold: #d7b75f;
+    --gold-fill: #c9a84c;
+    --rule: #26384c;
+    --rule-soft: #1d2c3d;
+    --navy: #08111b;
+    --navy-ink: #e9eef4;
+    --navy-soft: #93a3b5;
+    --ok: #6fbf95;
+    --warn: #d9ae4e;
+    --stop: #e08066;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #0b1622;
+  --surface: #121f2d;
+  --surface-2: #17273a;
+  --ink: #e9eef4;
+  --ink-2: #c2cedb;
+  --slate: #93a3b5;
+  --gold: #d7b75f;
+  --gold-fill: #c9a84c;
+  --rule: #26384c;
+  --rule-soft: #1d2c3d;
+  --navy: #08111b;
+  --navy-ink: #e9eef4;
+  --navy-soft: #93a3b5;
+  --ok: #6fbf95;
+  --warn: #d9ae4e;
+  --stop: #e08066;
+}

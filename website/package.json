@@ -1,0 +1,23 @@
+{
+  "name": "drds-website",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DRDS Website V2 — Astro static-first foundation. Deliberately isolated from the Snapshot backend at the repository root.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "astro": "^7.2.6"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "typescript": "^5.7.0"
+  }
+}

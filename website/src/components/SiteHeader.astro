@@ -1,0 +1,104 @@
+---
+import { ROUTES } from "../lib/config";
+
+interface Props {
+  /** Current path, so the active link can be marked for assistive tech. */
+  path: string;
+}
+const { path } = Astro.props;
+
+const links = [
+  { href: ROUTES.snapshot, label: "Growth Snapshot" },
+  { href: ROUTES.start, label: "Growth Report" },
+];
+---
+
+<header class="site-header">
+  <div class="wrap site-header__inner">
+    <a class="site-header__mark" href={ROUTES.home}>
+      <span class="site-header__name">DR Digital Systems</span>
+      <span class="site-header__descriptor">Growth Systems Company</span>
+    </a>
+
+    <nav aria-label="Primary">
+      <ul class="site-header__nav">
+        {
+          links.map((link) => (
+            <li>
+              <a href={link.href} aria-current={path === link.href ? "page" : undefined}>
+                {link.label}
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .site-header {
+    border-bottom: 1px solid var(--rule);
+    background: var(--ground);
+  }
+
+  .site-header__inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1.5rem;
+    padding-block: 1rem;
+  }
+
+  .site-header__mark {
+    text-decoration: none;
+    color: var(--ink);
+    display: grid;
+    gap: 2px;
+    min-height: var(--tap-target);
+    align-content: center;
+  }
+
+  .site-header__name {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .site-header__descriptor {
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--slate);
+  }
+
+  .site-header__nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.5rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .site-header__nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--tap-target);
+    color: var(--ink-2);
+    text-decoration: none;
+    font-size: 0.92rem;
+  }
+
+  .site-header__nav a:hover {
+    color: var(--ink);
+    text-decoration: underline;
+  }
+
+  .site-header__nav a[aria-current="page"] {
+    color: var(--ink);
+    font-weight: 600;
+  }
+</style>

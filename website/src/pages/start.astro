@@ -1,0 +1,149 @@
+---
+// The Growth Report start surface. STRUCTURE ONLY in this phase.
+//
+// TEMPORARY COPY — placeholder wording to prove the structure.
+//
+// DELIBERATELY NOT WIRED UP. This form submits nowhere, stores nothing, and
+// collects nothing. There is no endpoint, no handler and no persistence. The
+// commercial workflow — qualification, invoice, EFT, production — is a later,
+// separately authorised phase.
+//
+// The live Strategy Call route remains DRDS's working enquiry channel and is
+// linked below. It is NOT replaced or redirected by this page, and must stay
+// that way until this form genuinely works.
+//
+// Form design intent: absorb ambiguity for the prospect and stay short. It is
+// not a discovery questionnaire — the diagnosis is what DRDS is paid for, so
+// asking the prospect to self-diagnose here would be the wrong shape entirely.
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { STRATEGY_CALL_URL } from "../lib/config";
+---
+
+<BaseLayout
+  title="Start a Growth Report — DR Digital Systems"
+  description="Begin a Growth Report: a paid diagnosis of what is limiting your growth, what is connected to it, and the order to address it in."
+  index={false}
+>
+  <section class="intro">
+    <div class="wrap stack">
+      <p class="kicker">Growth Report</p>
+      <h1>Start a Growth Report</h1>
+      <p class="lede prose">
+        A Growth Snapshot states what can be observed. A Growth Report decides what it means: your main
+        constraint, what is connected to it, and the order to address it in.
+      </p>
+      <p class="prose muted">
+        Available by enquiry while DRDS works with a limited number of early clients. Tell us where to
+        look — we do the diagnosis.
+      </p>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <!-- NOT IMPLEMENTED — see the notice inside the form. -->
+    <div class="notice" data-tone="info">
+      <p>
+        <strong>This form is not live yet.</strong> It is the structure for a later phase and submits
+        nowhere. To start a Growth Report today,
+        <a href={STRATEGY_CALL_URL}>book a Strategy Call</a> — that route is live and monitored.
+      </p>
+    </div>
+
+    <form id="start-form" class="start-form panel stack" novalidate aria-describedby="start-unimplemented">
+      <h2>Your details</h2>
+
+      <div class="start-form__field">
+        <label for="start-name">Your name</label>
+        <input id="start-name" name="name" type="text" autocomplete="name" required />
+      </div>
+
+      <div class="start-form__field">
+        <label for="start-email">Email</label>
+        <input id="start-email" name="email" type="email" autocomplete="email" required />
+      </div>
+
+      <div class="start-form__field">
+        <label for="start-website">Business website</label>
+        <input
+          id="start-website"
+          name="website"
+          type="text"
+          inputmode="url"
+          autocapitalize="off"
+          spellcheck="false"
+          aria-describedby="start-website-hint"
+          required
+        />
+        <p id="start-website-hint" class="field-hint">
+          If you have already run a Growth Snapshot, use the same address.
+        </p>
+      </div>
+
+      <div class="start-form__field">
+        <label for="start-context">What prompted this? <span class="muted">(optional)</span></label>
+        <textarea id="start-context" name="context" rows="4" aria-describedby="start-context-hint"></textarea>
+        <p id="start-context-hint" class="field-hint">
+          A sentence or two is plenty. You are not expected to diagnose anything — that is our job.
+        </p>
+      </div>
+
+      <p id="start-unimplemented" class="field-hint">
+        Submission is intentionally unimplemented in this phase. Nothing you type here is sent or stored.
+      </p>
+
+      <button type="submit" class="button button--primary" aria-disabled="true">
+        Submission not yet available
+      </button>
+
+      <div id="start-status" class="notice" data-tone="warn" role="status" aria-live="polite" tabindex="-1" hidden>
+        <p id="start-status-message"></p>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    import { track, START_BEGUN } from "../lib/analytics-events";
+
+    const form = document.getElementById("start-form") as HTMLFormElement;
+    const status = document.getElementById("start-status") as HTMLElement;
+    const message = document.getElementById("start-status-message") as HTMLElement;
+
+    // The form must not appear to work. Submission is blocked and says so
+    // plainly rather than failing silently or pretending to succeed.
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      message.textContent =
+        "This form isn't live yet, so nothing was sent. Please book a Strategy Call and we'll pick it up from there.";
+      status.hidden = false;
+      status.focus();
+    });
+
+    // Fires once, on first interaction. No field VALUE is ever captured.
+    let begun = false;
+    form.addEventListener(
+      "input",
+      () => {
+        if (begun) return;
+        begun = true;
+        track(START_BEGUN, { referrerKind: document.referrer.includes("/snapshot") ? "snapshot_result" : "direct" });
+      },
+      { once: false }
+    );
+  </script>
+</BaseLayout>
+
+<style>
+  .intro {
+    padding-block: clamp(2.5rem, 7vw, 4rem) 0;
+  }
+
+  .start-form {
+    max-width: 34rem;
+    margin-block-start: 1.5rem;
+  }
+
+  .start-form__field {
+    display: grid;
+    gap: 0.4rem;
+  }
+</style>

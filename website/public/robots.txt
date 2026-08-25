@@ -1,0 +1,7 @@
+# DRDS Website V2 — foundation scaffold.
+# This file ships with the static build. It is NOT live: the production robots
+# policy is still served by the existing WordPress site and is unaffected.
+User-agent: *
+Allow: /
+
+Sitemap: https://drdigitalsystems.co.za/sitemap.xml
