@@ -1,7 +1,21 @@
 ---
 // The public Growth Snapshot surface. STRUCTURE ONLY in this phase.
 //
-// TEMPORARY COPY — placeholder wording to prove the structure.
+// COPY STATUS — mostly placeholder wording to prove the structure, EXCEPT the
+// intro lede and the boundary line beneath it, which carry Council-ratified
+// wording from the public product-language conformity pass.
+//
+//   The Snapshot may state what is observably true.
+//   Only the Growth Report may state what matters most.
+//
+// This page must never claim to identify, rank or prioritise a constraint.
+//
+// KNOWN GAP, reported to Product Council and deliberately NOT patched here: the
+// backend contract still returns a `primaryConstraint` field (alongside
+// `secondaryConstraints` in the reasoning stage), so the result blockquote below
+// can render a prioritised claim regardless of what this page's copy says. That
+// is a product-logic question, not a wording one, and changing the contract was
+// out of scope for a copy pass.
 //
 // Every state the run can end in has a real container here, present in the
 // served HTML and revealed by the client script. Nothing is injected as a
@@ -24,15 +38,21 @@ const apiOrigin = SNAPSHOT_API_ORIGIN;
 
 <BaseLayout
   title="Growth Snapshot — DR Digital Systems"
-  description="Enter a business website and receive a Growth Snapshot: a short, specific read of what publicly observable evidence suggests is limiting growth."
+  description="Enter a business website and receive a Growth Snapshot: a short, specific read of what is publicly observable — where the evidence is clear, and where it isn't."
 >
   <section class="intro">
     <div class="wrap stack">
       <p class="kicker">Growth Snapshot</p>
       <h1>See what your public evidence says about your growth</h1>
       <p class="lede prose">
-        Enter your business website. We read what is publicly observable and report the single
-        constraint the evidence points to most strongly.
+        Enter your business website. We read what is publicly observable and show where the evidence is
+        clear, where it is not, and what needs human judgement to settle.
+      </p>
+      <!-- The boundary, stated before the visitor runs it rather than only after
+           a result appears. The Growth Report handoff below the result says the
+           same thing, but that block is hidden until a run completes. -->
+      <p class="prose muted">
+        The Snapshot does not diagnose your main constraint or prescribe the order of work.
       </p>
 
       <!-- INPUT + SUBMIT.

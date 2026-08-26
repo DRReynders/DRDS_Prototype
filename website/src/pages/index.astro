@@ -1,11 +1,23 @@
 ---
 // Homepage SHELL. Structure only.
 //
-// TEMPORARY COPY — every sentence on this page is placeholder wording written to
-// prove the structure, not final marketing copy. Product Council owns the final
-// text. Nothing here claims a result, a client outcome, a track record or any
-// social proof, because none of that exists to claim: DRDS is in operational
-// public beta.
+// COPY STATUS. Most of this page is still placeholder wording written to prove
+// the structure, not final marketing copy — Product Council owns the final text.
+//
+// EXCEPT: the hero headline and support sentence, and the Growth Snapshot card,
+// now carry Council-RATIFIED wording from the public product-language conformity
+// pass. They encode the product boundary and must not be reworded casually:
+//
+//   The Snapshot may state what is observably true.
+//   Only the Growth Report may state what matters most.
+//
+// So the Snapshot card must never claim to identify, rank or prioritise a
+// constraint. That is the Growth Report's job, and saying otherwise both
+// oversells the free tier and contradicts the card's own boundary line.
+//
+// Nothing here claims a result, a client outcome, a track record or any social
+// proof, because none of that exists to claim: DRDS is in operational public
+// beta.
 //
 // The structural job of this page, per the approved Instrument-First Hybrid:
 //   1. say what DRDS sells in one clear sentence;
@@ -18,7 +30,7 @@ import { ROUTES } from "../lib/config";
 
 <BaseLayout
   title="DR Digital Systems — Growth Systems Company"
-  description="DRDS diagnoses what is actually limiting a business's growth, using publicly observable evidence, and sequences what to do about it."
+  description="DRDS diagnoses what is actually limiting a business's growth and sequences what to do about it. Start with a free Growth Snapshot of what is publicly observable."
 >
   <!-- ONE sentence, ONE action. Everything else on this page is subordinate. -->
   <section class="hero">
@@ -26,8 +38,8 @@ import { ROUTES } from "../lib/config";
       <p class="kicker">Growth Systems Company</p>
       <h1>We diagnose what is actually limiting your growth — and in what order to fix it.</h1>
       <p class="lede prose">
-        Most businesses invest in isolated activities and wonder why growth never compounds. DRDS starts
-        with evidence rather than activity.
+        Most businesses invest in isolated activities and wonder why growth never compounds. Start with a
+        free outside-in Growth Snapshot. It shows what we can observe before human judgement begins.
       </p>
 
       <div class="hero__action">
@@ -52,12 +64,12 @@ import { ROUTES } from "../lib/config";
           <p class="eyebrow">Free · Observation</p>
           <h3>Growth Snapshot</h3>
           <p>
-            An automated read of what is publicly observable about your business, and the single
-            constraint that evidence points to most strongly.
+            An automated outside-in read of what is publicly observable about your business — where the
+            evidence is clear, and where it isn't.
           </p>
           <p class="muted">
-            It states what can be observed. It does not decide your main constraint, and it does not
-            tell you where to invest.
+            It shows what can be observed. It does not decide your main constraint or prescribe the
+            order of work.
           </p>
           <p><a href={ROUTES.snapshot}>Run a Growth Snapshot</a></p>
         </li>
