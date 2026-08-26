@@ -1,16 +1,30 @@
 ---
 import SiteHeader from "../components/SiteHeader.astro";
 import SiteFooter from "../components/SiteFooter.astro";
+import { IS_STAGING } from "../lib/site-env";
 import "../styles/global.css";
 
 interface Props {
   title: string;
   description: string;
-  /** Set false on pages that should not be indexed. Defaults to indexable. */
+  /** Set false on pages that should not be indexed. Defaults to indexable.
+   *  Ignored in a staging build, where every page is noindex regardless. */
   index?: boolean;
 }
 
 const { title, description, index = true } = Astro.props;
+
+// The site's ONE indexing decision, made here so no page can drift from it.
+//
+// Staging is password-protected, but protection and indexing are separate
+// concerns and we do not rely on the password to keep the host out of a search
+// index. A staging build therefore forces `noindex, nofollow` on EVERY page and
+// ignores the page's own `index` prop: a page cannot opt itself back in.
+//
+// A production build is unchanged by staging's existence — it is indexable
+// unless the page passes `index={false}`, which stays `noindex, follow` so a
+// non-indexed page still passes link equity onward.
+const robots = IS_STAGING ? "noindex, nofollow" : index ? null : "noindex, follow";
 
 // Canonical URLs come from `site` in astro.config.mjs, so they are correct in
 // the build and never hard-coded per page.
@@ -27,7 +41,7 @@ const path = Astro.url.pathname;
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical.href} />
-    {index ? null : <meta name="robots" content="noindex, follow" />}
+    {robots ? <meta name="robots" content={robots} /> : null}
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />

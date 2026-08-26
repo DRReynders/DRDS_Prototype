@@ -47,18 +47,65 @@ cp .env.example .env      # then set PUBLIC_SNAPSHOT_API_ORIGIN
 
 ## Configuration
 
-One environment value, and it is not a secret:
+Two environment values, and neither is a secret:
 
 ```
 PUBLIC_SNAPSHOT_API_ORIGIN=https://drdsprototype-production.up.railway.app
+PUBLIC_SITE_ENV=production        # or `staging`; unset means production
 ```
 
 Astro inlines every `PUBLIC_`-prefixed value into the built JavaScript, so it is
 visible to every visitor. **Nothing secret may ever be added to `.env.example`.**
 API keys belong in the Snapshot backend's own environment.
 
-The value is read in exactly one place — `src/lib/config.ts` — so pointing the
-site at a staging backend is one variable, not a search-and-replace.
+Each is read in exactly one place, so pointing the site at a staging backend is
+one variable, not a search-and-replace:
+
+- `PUBLIC_SNAPSHOT_API_ORIGIN` → `src/lib/config.ts`
+- `PUBLIC_SITE_ENV` → `src/lib/site-env.ts`
+
+They are separate modules on purpose. `config.ts` is imported by
+`snapshot-client.ts` and is therefore bundled into the browser; `site-env.ts` is
+build-time only and must never be imported from client code, so no
+build-environment machinery ships to visitors.
+
+## Build environments and indexing
+
+`PUBLIC_SITE_ENV` exists for one reason: the private staging host must never be
+indexed, and the eventual production launch must never inherit that.
+
+| | `production` (or unset) | `staging` |
+|---|---|---|
+| `/` | indexable | `noindex, nofollow` |
+| `/snapshot/` | indexable | `noindex, nofollow` |
+| `/start/` | `noindex, follow` | `noindex, nofollow` |
+| `robots.txt` | `Allow: /` | `Disallow: /` |
+
+Two mechanisms, both build-time, no JavaScript and no server:
+
+- **`src/layouts/BaseLayout.astro`** makes the decision once for every page. In
+  a staging build it forces `noindex, nofollow` and ignores the page's own
+  `index` prop, so a page cannot opt itself back into indexing.
+- **`src/pages/robots.txt.ts`** generates `robots.txt`. It is a prerendered
+  static endpoint, not a `public/` file, because a `public/` file would be
+  copied verbatim into both builds and staging would have shipped `Allow: /`.
+
+An unrecognised `PUBLIC_SITE_ENV` **fails the build** (`src/lib/site-env.ts`).
+Falling back to "production" on a typo is exactly how a staging host becomes
+crawlable.
+
+Staging build:
+
+```
+cd website
+PUBLIC_SITE_ENV=staging PUBLIC_SNAPSHOT_API_ORIGIN=https://drdsprototype-production.up.railway.app npm run build
+```
+
+The build prints the environment it produced, e.g.
+`[drds] PUBLIC_SITE_ENV=staging — pages are noindex, nofollow; robots.txt says Disallow: /`.
+
+Indexing controls are separate from, and additional to, the staging host's cPanel
+Directory Privacy. Neither replaces the other.
 
 ## Routes
 
@@ -67,6 +114,7 @@ site at a staging backend is one variable, not a search-and-replace.
 | `/` | `dist/index.html` | Shell. Placeholder copy. |
 | `/snapshot/` | `dist/snapshot/index.html` | Full state structure. Calls the live API. |
 | `/start/` | `dist/start/index.html` | Form structure. **Submits nowhere.** `noindex`. |
+| `robots.txt` | `dist/robots.txt` | Generated from `PUBLIC_SITE_ENV`. See above. |
 
 `build.format: "directory"` plus `trailingSlash: "always"` means conventional
 static hosting serves these as directory URLs with no rewrite rules.
