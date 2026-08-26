@@ -19,6 +19,7 @@ import {
   recordSpend,
   UNAVAILABLE_MESSAGE,
 } from "./guards.js";
+import { corsConfigSummary, corsHeaders, preflightHeaders, resolveCors } from "./cors.js";
 
 const WEB_DIR = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
@@ -38,8 +39,15 @@ const MILESTONES: [prefix: string, label: string][] = [
   ["Contract 5", "Writing your Growth Snapshot"],
 ];
 
-function json(res: ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+// Every JSON response goes through here, so attaching the browser-origin headers
+// at this one point is what makes it structurally impossible to return a failure
+// state the site's own page cannot read. A visitor must see the honest message,
+// not an opaque CORS error.
+function json(req: IncomingMessage, res: ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    ...corsHeaders(resolveCors(req.headers.origin)),
+  });
   res.end(JSON.stringify(body));
 }
 
@@ -150,7 +158,7 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
   const ip = clientIp(req);
   const rate = rateLimitCheck(ip);
   if (!rate.allowed) {
-    json(res, 429, { type: "error", state: "rate_limited", message: rate.message });
+    json(req, res, 429, { type: "error", state: "rate_limited", message: rate.message });
     return;
   }
   // Distinct machine-readable outcomes: "daily_capacity" means the configured
@@ -162,11 +170,11 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
     if (budget.state === "unavailable") {
       console.error("PV_GUARD_REFUSED " + guardConfigSummary().summary);
     }
-    json(res, 503, { type: "error", state: budget.state, message: budget.message });
+    json(req, res, 503, { type: "error", state: budget.state, message: budget.message });
     return;
   }
   if (busy) {
-    json(res, 503, {
+    json(req, res, 503, {
       type: "error",
       state: "busy",
       message: "We're completing another Growth Audit right now. Please try again in a few minutes.",
@@ -177,16 +185,20 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
   try {
     const url = String((await readBody(req)).url ?? "").trim();
     if (!url) {
-      json(res, 400, { type: "error", state: "input_failed", message: "Please enter a business website URL." });
+      json(req, res, 400, { type: "error", state: "input_failed", message: "Please enter a business website URL." });
       return;
     }
 
     // NDJSON stream: milestone events as the pipeline actually progresses,
     // then one final result/error line.
+    // Headers must be complete before the first byte of the stream — once
+    // writeHead runs they cannot be amended, so the browser-origin headers go on
+    // here rather than at the end.
     res.writeHead(200, {
       "Content-Type": "application/x-ndjson; charset=utf-8",
       "Cache-Control": "no-cache",
       "X-Accel-Buffering": "no",
+      ...corsHeaders(resolveCors(req.headers.origin)),
     });
     const write = (obj: unknown) => res.write(JSON.stringify(obj) + "\n");
 
@@ -231,7 +243,7 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
     console.error("PV_UNEXPECTED_SERVER_ERROR", err instanceof Error ? err.stack ?? err.message : String(err));
     const body = { type: "error", state: "error", message: GENERIC_FAILURE_MESSAGE };
     if (!res.headersSent) {
-      json(res, 500, body);
+      json(req, res, 500, body);
     } else {
       res.end(JSON.stringify(body) + "\n");
     }
@@ -246,16 +258,16 @@ async function handleEmail(req: IncomingMessage, res: ServerResponse): Promise<v
     const runId = String(body.runId ?? "");
     const email = String(body.email ?? "").trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      json(res, 400, { state: "invalid_email", message: "Please enter a valid email address." });
+      json(req, res, 400, { state: "invalid_email", message: "Please enter a valid email address." });
       return;
     }
     const found = findRunLogByRunId(runId);
     if (!found || !found.log.growthSnapshot) {
-      json(res, 404, { state: "not_found", message: "We couldn't find that Snapshot. Please run the analysis again." });
+      json(req, res, 404, { state: "not_found", message: "We couldn't find that Snapshot. Please run the analysis again." });
       return;
     }
     if (found.log.emailDelivery?.status === "sent") {
-      json(res, 200, { state: "already_sent", message: "This Snapshot has already been emailed." });
+      json(req, res, 200, { state: "already_sent", message: "This Snapshot has already been emailed." });
       return;
     }
     try {
@@ -269,14 +281,14 @@ async function handleEmail(req: IncomingMessage, res: ServerResponse): Promise<v
       console.log(
         "PV_EMAIL_SUMMARY " + JSON.stringify({ runId, email, status: "sent", sentAt: found.log.emailDelivery.sentAt })
       );
-      json(res, 200, { state: "sent", message: "Done — your Growth Snapshot is on its way to your inbox." });
+      json(req, res, 200, { state: "sent", message: "Done — your Growth Snapshot is on its way to your inbox." });
     } catch (err) {
       if (err instanceof EmailNotConfiguredError) {
         // Internal reason (e.g. "RESEND_API_KEY is not set") is exactly what
         // it says — logged, never shown. The visitor gets a calm generic
         // message; nothing about email providers or configuration.
         console.error("PV_EMAIL_NOT_CONFIGURED", err.message);
-        json(res, 200, {
+        json(req, res, 200, {
           state: "email_not_configured",
           message: "Email delivery isn't available right now, but your Snapshot is still shown above — nothing was lost.",
         });
@@ -291,19 +303,21 @@ async function handleEmail(req: IncomingMessage, res: ServerResponse): Promise<v
       };
       updateRunLog(found.file, found.log);
       console.error("PV_EMAIL_SEND_FAILED", runId, err instanceof Error ? err.message : String(err));
-      json(res, 502, {
+      json(req, res, 502, {
         state: "send_failed",
         message: "We couldn't send the email right now. Your Snapshot is still shown above — nothing was lost.",
       });
     }
   } catch (err) {
     console.error("PV_UNEXPECTED_EMAIL_ERROR", err instanceof Error ? err.stack ?? err.message : String(err));
-    json(res, 500, {
+    json(req, res, 500, {
       state: "error",
       message: "Something went wrong on our end. Your Snapshot is still shown above — nothing was lost.",
     });
   }
 }
+
+const API_ROUTES = new Set(["/api/snapshot", "/api/email"]);
 
 const server = createServer(async (req, res) => {
   if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
@@ -311,6 +325,36 @@ const server = createServer(async (req, res) => {
     res.end(readFileSync(join(WEB_DIR, "index.html"), "utf8"));
     return;
   }
+
+  // Browser origin boundary, resolved once and applied before any handler runs.
+  // Requests with no Origin header are untouched: CLI use, direct API
+  // inspection and existing tooling keep working exactly as before.
+  if (req.url && API_ROUTES.has(req.url)) {
+    const cors = resolveCors(req.headers.origin);
+
+    // Preflight. Answered here, ahead of rate limiting, budget accounting, body
+    // parsing and the pipeline — a preflight is a question about permission, so
+    // it consumes no allowance, records no spend and starts no work.
+    if (req.method === "OPTIONS") {
+      if (cors.kind === "allowed") {
+        res.writeHead(204, preflightHeaders(cors));
+      } else {
+        // No Access-Control-Allow-Origin, and nothing about what IS allowed.
+        res.writeHead(403, { "Content-Type": "text/plain", ...corsHeaders(cors) });
+      }
+      res.end();
+      return;
+    }
+
+    // A browser origin that is not allowlisted is refused before anything
+    // costly happens. Deliberately terse: the response reveals no configuration.
+    if (cors.kind === "denied") {
+      res.writeHead(403, { "Content-Type": "text/plain", ...corsHeaders(cors) });
+      res.end("Forbidden");
+      return;
+    }
+  }
+
   if (req.method === "POST" && req.url === "/api/snapshot") return handleSnapshot(req, res);
   if (req.method === "POST" && req.url === "/api/email") return handleEmail(req, res);
   res.writeHead(404, { "Content-Type": "text/plain" });
@@ -324,4 +368,5 @@ server.listen(PORT, () => {
   // the log viewer immediately rather than at the moment a visitor is refused.
   const guards = guardConfigSummary();
   (guards.ok ? console.log : console.error)("PV_GUARD_CONFIG " + guards.summary);
+  console.log("PV_CORS_CONFIG " + corsConfigSummary());
 });
