@@ -132,36 +132,75 @@ export async function runPipeline(rawUrl: string, onStage?: StageEvent): Promise
       robots: log.robots,
     });
 
-    const c4 = await track(
-      "Contract 4 — Reasoning (CDER)",
-      // Area C2 (Council-authorised narrow exception): the CIP is passed through
-      // so regulator-sensitivity stays sourced from one place rather than being
-      // duplicated onto GoalModel and ReasoningResult. Read-only context.
-      () => runContract4(log.goalModel!, log.evidencePackage!, corpus, log.cip),
-      (r) =>
-        `${r.result.hypothesisConfidence}${r.escalationTrace?.attempted ? " (after 1 escalation attempt)" : ""}`
-    );
-    log.reasoningResult = c4.result;
-    log.evidencePackage = c4.pkg; // includes any escalation-gathered entry
-    log.escalationTrace = c4.escalationTrace;
+    // ── THE FAILURE BOUNDARY (Stage 1.1) ───────────────────────────────────
+    //
+    // Everything from here on is INTERNAL. The public product already exists
+    // and cost nothing to build, so a failure below must not destroy it.
+    //
+    // Before this boundary, one try/catch wrapped Contracts 0-5 and set
+    // `log.failure` for any of them. A provider outage during Contract 4 —
+    // reasoning the visitor is not buying and will never see — therefore
+    // replaced a finished Growth Snapshot with a generic error page.
+    //
+    // These stages get their own catch, writing `log.internalFailure` instead.
+    // `log.failure` keeps its original, narrower meaning: the PUBLIC product
+    // could not be produced. Pre-projection failure semantics are untouched.
+    try {
+      const c4 = await track(
+        "Contract 4 — Reasoning (CDER)",
+        // Area C2 (Council-authorised narrow exception): the CIP is passed through
+        // so regulator-sensitivity stays sourced from one place rather than being
+        // duplicated onto GoalModel and ReasoningResult. Read-only context.
+        () => runContract4(log.goalModel!, log.evidencePackage!, corpus, log.cip),
+        (r) =>
+          `${r.result.hypothesisConfidence}${r.escalationTrace?.attempted ? " (after 1 escalation attempt)" : ""}`
+      );
+      log.reasoningResult = c4.result;
+      log.evidencePackage = c4.pkg; // includes any escalation-gathered entry
+      log.escalationTrace = c4.escalationTrace;
+    } catch (err) {
+      log.internalFailure = internalFailureOf("Contract 4", err);
+    }
 
-    log.growthSnapshot = await track("Contract 5 — Growth Snapshot", () =>
-      runContract5(log.reasoningResult!, log.cip)
-    );
+    // Contract 5 is skipped entirely when Contract 4 did not produce a
+    // ReasoningResult. It writes copy ABOUT a constraint, so with no constraint
+    // there is nothing for it to write — and inventing a substitute diagnosis is
+    // precisely what must never happen.
+    if (log.reasoningResult) {
+      try {
+        log.growthSnapshot = await track("Contract 5 — Growth Snapshot", () =>
+          runContract5(log.reasoningResult!, log.cip)
+        );
+      } catch (err) {
+        log.internalFailure = internalFailureOf("Contract 5", err);
+      }
+    }
 
     return finish(log);
   } catch (err) {
-    log.failure ??= {
-      stage:
-        err instanceof LlmNotConfiguredError
-          ? "configuration"
-          : err instanceof BudgetExceededError
-            ? "budget"
-            : "unexpected",
-      reason: err instanceof Error ? err.message : String(err),
-    };
+    // Reached only for failures BEFORE the public projection exists. Unchanged.
+    log.failure ??= { stage: classifyFailure(err), reason: reasonOf(err) };
     return finish(log);
   }
+}
+
+/** How a thrown error is named in a run log. Shared by both catches so the two
+ *  paths can never classify the same outage differently. */
+function classifyFailure(err: unknown): "configuration" | "budget" | "unexpected" {
+  if (err instanceof LlmNotConfiguredError) return "configuration";
+  if (err instanceof BudgetExceededError) return "budget";
+  return "unexpected";
+}
+
+function reasonOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** An internal-stage failure, named by the Contract that threw and by the kind
+ *  of outage it was. Both are internal-only: no caller may show either to a
+ *  visitor, and nothing here is consulted when building the public payload. */
+function internalFailureOf(stage: string, err: unknown): { stage: string; reason: string } {
+  return { stage, reason: `${classifyFailure(err)}: ${reasonOf(err)}` };
 }
 
 function finish(log: RunLog): PipelineOutcome {

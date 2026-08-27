@@ -126,12 +126,24 @@ function clientFacingFailureMessage(failure: { stage: string; reason: string }):
 // filesystem, so a run's key facts survive here even if the JSON file itself
 // is ever lost to a redeploy. No new infrastructure, no PII beyond what's
 // already in the log file.
+/** Whether a stage completed, failed, or was never reached because the stage
+ *  before it did not produce what it needs. "Never ran" and "ran and failed"
+ *  are different facts and a log that blurs them is not worth reading. */
+function stageState(reached: boolean, produced: boolean): "completed" | "failed" | "not reached" {
+  if (!reached) return "not reached";
+  return produced ? "completed" : "failed";
+}
+
 function logRunSummary(log: {
   runId: string;
   startedAt: string;
   finishedAt?: string;
   input: { rawInputValue: string; normalisedBusinessIdentifier: string };
   failure?: { stage: string; reason: string };
+  internalFailure?: { stage: string; reason: string };
+  publicSnapshot?: unknown;
+  reasoningResult?: unknown;
+  growthSnapshot?: unknown;
   llmUsage?: { totals: { estimatedCostUsd: number } };
 }): void {
   console.log(
@@ -141,8 +153,20 @@ function logRunSummary(log: {
         url: log.input.rawInputValue,
         startedAt: log.startedAt,
         finishedAt: log.finishedAt,
+        // Stage 1.1: `status` reports the PUBLIC outcome, because that is what
+        // the visitor experienced. A run that delivered a Snapshot and then lost
+        // its internal reasoning is "completed" — reporting it as "failed" would
+        // make every dashboard disagree with every visitor. The internal outcome
+        // is carried alongside it rather than folded into it.
         status: log.failure ? "failed" : "completed",
         failureStage: log.failure?.stage,
+        // The three states Product Council asked to be distinguishable. Each is
+        // three-valued: a stage that never ran is "not reached", which is a
+        // different fact from one that ran and failed.
+        publicSnapshot: log.publicSnapshot ? "completed" : "absent",
+        internalReasoning: stageState(Boolean(log.publicSnapshot), Boolean(log.reasoningResult)),
+        internalSnapshot: stageState(Boolean(log.reasoningResult), Boolean(log.growthSnapshot)),
+        internalFailureStage: log.internalFailure?.stage,
         estimatedCostUsd: log.llmUsage?.totals.estimatedCostUsd ?? null,
       })
   );
@@ -232,10 +256,35 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
       const spend = recordSpend(log.llmUsage.totals.estimatedCostUsd);
       if (!spend.recorded) console.error("PV_SPEND_NOT_RECORDED " + spend.reason);
     }
+
+    // Stage 1.1. The visitor is about to receive a complete Growth Snapshot, so
+    // nothing on their side signals that anything went wrong — which is exactly
+    // why this has to be loud on ours. Full reason included: this goes to the
+    // server's own log, never to a response body.
+    if (log.internalFailure) {
+      console.error(
+        "PV_INTERNAL_REASONING_FAILED " +
+          JSON.stringify({
+            runId: log.runId,
+            stage: log.internalFailure.stage,
+            reason: log.internalFailure.reason,
+            publicSnapshotDelivered: log.publicSnapshot !== undefined,
+            reasoningResultPresent: log.reasoningResult !== undefined,
+            internalSnapshotPresent: log.growthSnapshot !== undefined,
+          })
+      );
+    }
     logRunSummary(log);
 
-    if (log.failure) {
-      const { state, message } = clientFacingFailureMessage(log.failure);
+    // Stage 1.1: the terminal branch keys on WHETHER THE PUBLIC PRODUCT EXISTS,
+    // not on whether anything in the run went wrong. Those became different
+    // questions the moment the public Snapshot stopped depending on the
+    // reasoning stages, and this line is where the difference is honoured:
+    // a completed observation is delivered even if Contract 4 or 5 later failed.
+    if (!log.publicSnapshot) {
+      const { state, message } = clientFacingFailureMessage(
+        log.failure ?? { stage: "unexpected", reason: "the run produced no public Snapshot" }
+      );
       write({ type: "error", state, message });
     } else {
       // THE PUBLIC WIRE CONTRACT.

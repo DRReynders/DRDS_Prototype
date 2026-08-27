@@ -43,15 +43,42 @@ export function assemble(log: RunLog, sourceFile: string): string {
   const snap = log.growthSnapshot;
   const entries = log.evidencePackage?.entries ?? [];
 
+  // The diagnosis comes from Contract 4 and from nowhere else. A completed
+  // publicSnapshot is NOT a substitute and is never accepted as one: it states
+  // observations and names no constraint, which is the whole point of it.
   const missing: string[] = [];
   if (!cip) missing.push("Contract 1 (CIP)");
   if (!gm) missing.push("Contract 2 (Goal Model)");
   if (!rr) missing.push("Contract 4 (Reasoning)");
   if (missing.length) {
+    // Stage 1.1 made this refusal easier to hit and harder to understand. Such a
+    // run now looks SUCCESSFUL from every other angle — the visitor received a
+    // complete Growth Snapshot and the run summary says "completed" — so a
+    // founder can reasonably reach for it. Say why it cannot be used, rather
+    // than telling them to "choose a successful run log" when they just did.
+    const internal = log.internalFailure
+      ? ` The run's public Growth Snapshot completed and was delivered to the client, but internal reasoning failed at ${log.internalFailure.stage} (${log.internalFailure.reason}). A delivered Snapshot is an observation, not a diagnosis, and cannot stand in for the missing reasoning.`
+      : "";
     throw new Error(
-      `Run log is missing ${missing.join(", ")} — a Growth Report draft needs a completed run. Choose a successful run log.`
+      `Run log is missing ${missing.join(", ")} — a Growth Report draft needs completed internal reasoning.${internal} ` +
+        `Re-run the pipeline for this business before assembling a Report.`
     );
   }
+
+  // Contract 4 succeeded but a later internal stage did not. The diagnosis is
+  // intact, so the draft is assembled — but the founder is told, because the
+  // Snapshot reference block below will be a placeholder and they should know
+  // that is a failure rather than an oversight.
+  const internalFailureWarning = log.internalFailure
+    ? [
+        F(
+          `⚠ Internal reasoning did not fully complete on this run: ${log.internalFailure.stage} failed (${log.internalFailure.reason}). ` +
+            `The client's public Growth Snapshot was delivered and is unaffected. Check every section below that draws on the internal ` +
+            `Snapshot before relying on it.`
+        ),
+        "",
+      ]
+    : [];
 
   const name = cip!.businessName || "(business name unresolved)";
   const passes = entries.filter((e) => e.resultStatus === "Pass");
@@ -269,7 +296,7 @@ us: it is the foundation everything else stands on.*
 - **What the business appears built to achieve:** ${gm!.businessGoal}
 - **Growth functions a business like this depends on:** ${gm!.expectedGrowthFunctions.join(", ")}
 
-${identityWarning.join("\n")}${regulatorWarning.join("\n")}${F(
+${internalFailureWarning.join("\n")}${identityWarning.join("\n")}${regulatorWarning.join("\n")}${F(
     `Draft one short observed-narrative paragraph from the CIP. CIP notes for reference (delete): ${cip!.notes || "(none)"}`
   )}
 

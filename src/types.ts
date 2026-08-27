@@ -543,5 +543,19 @@ export interface RunLog {
   robots?: { disallows: string[]; blockedUrls: string[] };
   llmUsage?: import("./llm/usage.js").LlmUsageSummary;
   emailDelivery?: { to: string; sentAt: string; provider: string; status: "sent" | "failed"; detail?: string };
+  // The run could not produce its PUBLIC product. Nothing is delivered to the
+  // visitor and the honest failure state is shown instead.
   failure?: { stage: string; reason: string };
+  // Stage 1.1 — additive and optional.
+  //
+  // A failure that happened AFTER the public projection was already built, i.e.
+  // in Contract 4 or Contract 5. The visitor still receives their Growth
+  // Snapshot, because it was complete before this went wrong; only the internal
+  // diagnostic work is missing.
+  //
+  // Deliberately a SEPARATE field from `failure` rather than a flag on it. The
+  // two mean different things to every reader: `failure` means "no public
+  // product", `internalFailure` means "public product delivered, Growth Report
+  // raw material absent". Collapsing them is exactly the bug this patch fixes.
+  internalFailure?: { stage: string; reason: string };
 }

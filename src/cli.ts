@@ -69,5 +69,17 @@ if (s) {
   console.log(`Growth Report raw material. Never rendered to a stranger.`);
   console.log(`----------------------------------------------------------`);
 }
+
+// Stage 1.1: the visitor's product survived, so this run exits 0 and prints a
+// Snapshot. A developer must still be told the reasoning did not complete, or
+// the CLI would quietly present a run that cannot become a Growth Report as if
+// it were a normal success.
+if (log.internalFailure) {
+  console.error(`\n!! INTERNAL REASONING DID NOT COMPLETE`);
+  console.error(`   Failed at: ${log.internalFailure.stage}`);
+  console.error(`   Reason:    ${log.internalFailure.reason}`);
+  console.error(`   The public Growth Snapshot above is complete and was delivered.`);
+  console.error(`   This run has no Growth Report raw material and cannot be assembled.`);
+}
 printUsage();
 console.error(`\nRun log: ${logFile}`);
