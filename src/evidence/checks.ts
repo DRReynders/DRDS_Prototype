@@ -225,15 +225,18 @@ function entry(
 export function checkSsl(corpus: SiteCorpus): EvidenceEntry {
   const hp = corpus.homepage;
   const https = hp.finalUrl.startsWith("https://") && !hp.error && hp.status < 400;
-  return entry(
-    "E-VIS-016",
-    https
-      ? `Site loads successfully over HTTPS (${hp.finalUrl})`
-      : `Site did not load cleanly over HTTPS (status ${hp.status}${hp.error ? `, ${hp.error}` : ""})`,
-    https ? "Pass" : "Fail",
-    "Direct fetch",
-    "Node.js rejects invalid/expired certificates by default, so a successful HTTPS fetch implies a valid certificate."
-  );
+  return {
+    ...entry(
+      "E-VIS-016",
+      https
+        ? `Site loads successfully over HTTPS (${hp.finalUrl})`
+        : `Site did not load cleanly over HTTPS (status ${hp.status}${hp.error ? `, ${hp.error}` : ""})`,
+      https ? "Pass" : "Fail",
+      "Direct fetch",
+      "Node.js rejects invalid/expired certificates by default, so a successful HTTPS fetch implies a valid certificate."
+    ),
+    facts: { https: https ? 1 : 0 },
+  };
 }
 
 export function checkTitles(corpus: SiteCorpus): EvidenceEntry {
@@ -251,13 +254,16 @@ export function checkTitles(corpus: SiteCorpus): EvidenceEntry {
   const canonicalNote = collapsed
     ? ` ${collapsed} fetched URL(s) collapsed by rel="canonical" and not counted as duplicates.`
     : "";
-  return entry(
-    "E-VIS-001",
-    `${pages.length} pages checked: ${missing} missing titles, ${duplicated ? "duplicates present" : "all unique"}. Examples: ${titles.filter(Boolean).slice(0, 3).join(" | ")}`,
-    status,
-    pages.map((p) => p.finalUrl).join(", "),
-    `Checked across the ${pages.length} distinct fetched core pages only, not the full site.${canonicalNote}`
-  );
+  return {
+    ...entry(
+      "E-VIS-001",
+      `${pages.length} pages checked: ${missing} missing titles, ${duplicated ? "duplicates present" : "all unique"}. Examples: ${titles.filter(Boolean).slice(0, 3).join(" | ")}`,
+      status,
+      pages.map((p) => p.finalUrl).join(", "),
+      `Checked across the ${pages.length} distinct fetched core pages only, not the full site.${canonicalNote}`
+    ),
+    facts: { pages: pages.length, missing, duplicated: duplicated ? 1 : 0 },
+  };
 }
 
 export function checkMetaDescriptions(corpus: SiteCorpus): EvidenceEntry {
@@ -273,13 +279,16 @@ export function checkMetaDescriptions(corpus: SiteCorpus): EvidenceEntry {
   const canonicalNote = collapsed
     ? ` ${collapsed} fetched URL(s) collapsed by rel="canonical" and not counted as duplicates.`
     : "";
-  return entry(
-    "E-VIS-002",
-    `${pages.length} pages checked: ${missing} missing meta descriptions, ${duplicated ? "duplicates present" : "no duplicates"}.`,
-    status,
-    pages.map((p) => p.finalUrl).join(", "),
-    `Checked across the ${pages.length} distinct fetched core pages only.${canonicalNote}`
-  );
+  return {
+    ...entry(
+      "E-VIS-002",
+      `${pages.length} pages checked: ${missing} missing meta descriptions, ${duplicated ? "duplicates present" : "no duplicates"}.`,
+      status,
+      pages.map((p) => p.finalUrl).join(", "),
+      `Checked across the ${pages.length} distinct fetched core pages only.${canonicalNote}`
+    ),
+    facts: { pages: pages.length, missing, duplicated: duplicated ? 1 : 0 },
+  };
 }
 
 export function checkH1s(corpus: SiteCorpus): EvidenceEntry {
@@ -288,13 +297,16 @@ export function checkH1s(corpus: SiteCorpus): EvidenceEntry {
     return entry("E-VIS-003", "No pages could be fetched", "Not Assessed", "Direct fetch", "Fetch blocked or failed.");
   const bad = pages.filter((p) => p.h1s.length !== 1);
   const status: ResultStatus = bad.length === 0 ? "Pass" : bad.length === pages.length ? "Fail" : "Partial";
-  return entry(
-    "E-VIS-003",
-    `${pages.length} pages checked: ${bad.length} with missing or multiple H1s. Example H1s: ${pages.flatMap((p) => p.h1s).slice(0, 3).join(" | ")}`,
-    status,
-    pages.map((p) => p.finalUrl).join(", "),
-    "Heading structure below H1 not assessed — H1 presence/uniqueness only."
-  );
+  return {
+    ...entry(
+      "E-VIS-003",
+      `${pages.length} pages checked: ${bad.length} with missing or multiple H1s. Example H1s: ${pages.flatMap((p) => p.h1s).slice(0, 3).join(" | ")}`,
+      status,
+      pages.map((p) => p.finalUrl).join(", "),
+      "Heading structure below H1 not assessed — H1 presence/uniqueness only."
+    ),
+    facts: { pages: pages.length, bad: bad.length },
+  };
 }
 
 export function checkCorePageCoverage(corpus: SiteCorpus): EvidenceEntry {
@@ -349,13 +361,16 @@ export function checkCorePageCoverage(corpus: SiteCorpus): EvidenceEntry {
     }
   }
 
-  return entry(
-    "E-VIS-041",
-    `Core page types found via homepage navigation: ${found.join(", ") || "none"} (${found.length} of ${wanted.length} expected types matched by URL pattern)`,
-    status,
-    corpus.homepage.finalUrl,
-    `Assessed from link URLs discovered on the homepage — pages linked only from deeper navigation may be missed.${slugNote}`
-  );
+  return {
+    ...entry(
+      "E-VIS-041",
+      `Core page types found via homepage navigation: ${found.join(", ") || "none"} (${found.length} of ${wanted.length} expected types matched by URL pattern)`,
+      status,
+      corpus.homepage.finalUrl,
+      `Assessed from link URLs discovered on the homepage — pages linked only from deeper navigation may be missed.${slugNote}`
+    ),
+    facts: { found: found.length, wanted: wanted.length },
+  };
 }
 
 // --- Area A1: mechanical Capture / Response checks ---
@@ -443,6 +458,12 @@ export function checkPrimaryCta(corpus: SiteCorpus): EvidenceEntry {
         `route-coverage figure is a floor, not a ceiling. The dead anchors above were directly observed.`
     ),
     claimType,
+    facts: {
+      pages: pages.length,
+      pagesWithRoute: pagesWithRoute.length,
+      dead: dead.length,
+      distinctRouteLabels,
+    },
   };
 }
 
@@ -498,6 +519,15 @@ export function checkConversionDestinations(corpus: SiteCorpus): EvidenceEntry {
         `followed.${conflictNote}${splitNote} Static markup only; JavaScript-injected destinations would not appear here.`
     ),
     claimType: totalRoutes === 0 ? "absence" : "presence",
+    facts: {
+      whatsapp: whatsapp.length,
+      booking: booking.length,
+      tel: tel.length,
+      mailto: mailto.length,
+      externalBooking,
+      conflicts: conflicts.length,
+      totalRoutes,
+    },
   };
 }
 
@@ -541,6 +571,7 @@ export function checkContactForm(corpus: SiteCorpus): EvidenceEntry {
         `post-submission behaviour are all unassessed.${requiredNote}`
     ),
     claimType: forms.length === 0 ? "absence" : "presence",
+    facts: { forms: forms.length, substantive: substantive.length, anyRequired: anyRequired ? 1 : 0 },
   };
 }
 
@@ -587,6 +618,7 @@ export function checkResponsePromise(corpus: SiteCorpus): EvidenceEntry {
         `called, messaged or submitted. Post-submission behaviour is not observable without submitting, which is not done.`
     ),
     claimType: promisePages.length > 0 ? "presence" : "absence",
+    facts: { channels: channelNames.length, promisePages: promisePages.length },
   };
 }
 

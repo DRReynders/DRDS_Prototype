@@ -29,14 +29,26 @@ let busy = false; // one run at a time — deliberate, not a missing feature
 
 // Real pipeline stages -> visitor-facing Waiting Room milestones. These fire
 // when the stage actually starts — no artificial timers, no fake narration.
+//
+// Observation-boundary pass: these labels are PUBLIC copy and were rewritten to
+// match the free product's promise. The old Contract 4 label,
+// "Reasoning about what's most limiting your growth", announced the judgement
+// act to a visitor who is not buying judgement, and the old Contract 5 label
+// promised a Snapshot that stage no longer writes.
+//
+// Every label still describes work that is genuinely happening — no stage was
+// hidden and none was invented — but describes it as activity rather than as
+// architecture. Contracts 2 and 4 still run and still produce the internal
+// hypothesis; a visitor is simply not told that a constraint is being chosen,
+// because the answer they are about to receive does not contain one.
 const MILESTONES: [prefix: string, label: string][] = [
   ["Contract 0", "Confirming your website is reachable"],
-  ["Site corpus", "Reading your website's pages"],
-  ["Contract 1", "Identifying your business"],
-  ["Contract 2", "Understanding what your business is trying to achieve"],
-  ["Contract 3", "Gathering evidence about your online presence"],
-  ["Contract 4", "Reasoning about what's most limiting your growth"],
-  ["Contract 5", "Writing your Growth Snapshot"],
+  ["Site corpus", "Reading your published pages"],
+  ["Contract 1", "Identifying your business from its own pages"],
+  ["Contract 2", "Setting the context for the evidence review"],
+  ["Contract 3", "Checking what your public pages show"],
+  ["Contract 4", "Reviewing what the evidence does and does not settle"],
+  ["Contract 5", "Finalising your Growth Snapshot"],
 ];
 
 // Every JSON response goes through here, so attaching the browser-origin headers
@@ -56,7 +68,7 @@ function json(req: IncomingMessage, res: ServerResponse, status: number, body: u
 // file (log.failure, log.stages) and to stdout here (see logRunSummary) — this
 // function only controls what the client is shown.
 const GENERIC_FAILURE_MESSAGE =
-  "We couldn't complete this Growth Audit just now. This is usually temporary — please try again shortly.";
+  "We couldn't complete this Growth Snapshot just now. This is usually temporary — please try again shortly.";
 
 function clientFacingFailureMessage(failure: { stage: string; reason: string }): { state: string; message: string } {
   switch (failure.stage) {
@@ -114,12 +126,24 @@ function clientFacingFailureMessage(failure: { stage: string; reason: string }):
 // filesystem, so a run's key facts survive here even if the JSON file itself
 // is ever lost to a redeploy. No new infrastructure, no PII beyond what's
 // already in the log file.
+/** Whether a stage completed, failed, or was never reached because the stage
+ *  before it did not produce what it needs. "Never ran" and "ran and failed"
+ *  are different facts and a log that blurs them is not worth reading. */
+function stageState(reached: boolean, produced: boolean): "completed" | "failed" | "not reached" {
+  if (!reached) return "not reached";
+  return produced ? "completed" : "failed";
+}
+
 function logRunSummary(log: {
   runId: string;
   startedAt: string;
   finishedAt?: string;
   input: { rawInputValue: string; normalisedBusinessIdentifier: string };
   failure?: { stage: string; reason: string };
+  internalFailure?: { stage: string; reason: string };
+  publicSnapshot?: unknown;
+  reasoningResult?: unknown;
+  growthSnapshot?: unknown;
   llmUsage?: { totals: { estimatedCostUsd: number } };
 }): void {
   console.log(
@@ -129,8 +153,20 @@ function logRunSummary(log: {
         url: log.input.rawInputValue,
         startedAt: log.startedAt,
         finishedAt: log.finishedAt,
+        // Stage 1.1: `status` reports the PUBLIC outcome, because that is what
+        // the visitor experienced. A run that delivered a Snapshot and then lost
+        // its internal reasoning is "completed" — reporting it as "failed" would
+        // make every dashboard disagree with every visitor. The internal outcome
+        // is carried alongside it rather than folded into it.
         status: log.failure ? "failed" : "completed",
         failureStage: log.failure?.stage,
+        // The three states Product Council asked to be distinguishable. Each is
+        // three-valued: a stage that never ran is "not reached", which is a
+        // different fact from one that ran and failed.
+        publicSnapshot: log.publicSnapshot ? "completed" : "absent",
+        internalReasoning: stageState(Boolean(log.publicSnapshot), Boolean(log.reasoningResult)),
+        internalSnapshot: stageState(Boolean(log.reasoningResult), Boolean(log.growthSnapshot)),
+        internalFailureStage: log.internalFailure?.stage,
         estimatedCostUsd: log.llmUsage?.totals.estimatedCostUsd ?? null,
       })
   );
@@ -177,7 +213,7 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
     json(req, res, 503, {
       type: "error",
       state: "busy",
-      message: "We're completing another Growth Audit right now. Please try again in a few minutes.",
+      message: "We're completing another Growth Snapshot right now. Please try again in a few minutes.",
     });
     return;
   }
@@ -220,19 +256,56 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
       const spend = recordSpend(log.llmUsage.totals.estimatedCostUsd);
       if (!spend.recorded) console.error("PV_SPEND_NOT_RECORDED " + spend.reason);
     }
+
+    // Stage 1.1. The visitor is about to receive a complete Growth Snapshot, so
+    // nothing on their side signals that anything went wrong — which is exactly
+    // why this has to be loud on ours. Full reason included: this goes to the
+    // server's own log, never to a response body.
+    if (log.internalFailure) {
+      console.error(
+        "PV_INTERNAL_REASONING_FAILED " +
+          JSON.stringify({
+            runId: log.runId,
+            stage: log.internalFailure.stage,
+            reason: log.internalFailure.reason,
+            publicSnapshotDelivered: log.publicSnapshot !== undefined,
+            reasoningResultPresent: log.reasoningResult !== undefined,
+            internalSnapshotPresent: log.growthSnapshot !== undefined,
+          })
+      );
+    }
     logRunSummary(log);
 
-    if (log.failure) {
-      const { state, message } = clientFacingFailureMessage(log.failure);
+    // Stage 1.1: the terminal branch keys on WHETHER THE PUBLIC PRODUCT EXISTS,
+    // not on whether anything in the run went wrong. Those became different
+    // questions the moment the public Snapshot stopped depending on the
+    // reasoning stages, and this line is where the difference is honoured:
+    // a completed observation is delivered even if Contract 4 or 5 later failed.
+    if (!log.publicSnapshot) {
+      const { state, message } = clientFacingFailureMessage(
+        log.failure ?? { stage: "unexpected", reason: "the run produced no public Snapshot" }
+      );
       write({ type: "error", state, message });
     } else {
+      // THE PUBLIC WIRE CONTRACT.
+      //
+      // `publicSnapshot` carries the observation projection and nothing else.
+      // `log.growthSnapshot` — the internal Contract 5 output, which does name
+      // and rank a constraint — is deliberately NOT written here. The judgement
+      // fields are absent from the payload, not hidden by the UI: a frontend
+      // cannot render what it was never sent, and a future frontend edit cannot
+      // reintroduce the leak.
+      //
+      // The key was renamed from `snapshot` on purpose. A client built against
+      // the old contract now fails its shape check and shows an honest error,
+      // rather than silently rendering blank cards from missing fields.
       write({
         type: "result",
         state: "snapshot",
         mockMode: (process.env.DRDS_LLM_PROVIDER || "anthropic").toLowerCase() === "mock",
         runId: log.runId,
         businessName: log.cip?.businessName,
-        snapshot: log.growthSnapshot,
+        publicSnapshot: log.publicSnapshot,
       });
     }
     res.end();
@@ -262,7 +335,11 @@ async function handleEmail(req: IncomingMessage, res: ServerResponse): Promise<v
       return;
     }
     const found = findRunLogByRunId(runId);
-    if (!found || !found.log.growthSnapshot) {
+    // publicSnapshot, never growthSnapshot: the email is a public surface and
+    // may only ever carry the observation projection. A run log written before
+    // the observation-boundary pass has no publicSnapshot, so it is treated as
+    // not found rather than emailed from the internal object.
+    if (!found || !found.log.publicSnapshot) {
       json(req, res, 404, { state: "not_found", message: "We couldn't find that Snapshot. Please run the analysis again." });
       return;
     }
@@ -274,7 +351,7 @@ async function handleEmail(req: IncomingMessage, res: ServerResponse): Promise<v
       const sent = await sendSnapshotEmail(
         email,
         found.log.cip?.businessName ?? found.log.input.normalisedBusinessIdentifier,
-        found.log.growthSnapshot
+        found.log.publicSnapshot
       );
       found.log.emailDelivery = { to: email, sentAt: new Date().toISOString(), provider: sent.provider, status: "sent" };
       updateRunLog(found.file, found.log);

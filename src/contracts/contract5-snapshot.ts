@@ -1,8 +1,18 @@
-// Contract 5 — Growth Snapshot.
-// Promise: consistent quality + honest confidence, always produced once a
-// ReasoningResult exists — never withheld for low confidence. Reasoning Notes
-// are internal/audit-only and are deliberately excluded from what this stage
-// ever sees, so they cannot leak into customer-facing copy.
+// Contract 5 — Growth Snapshot (INTERNAL since the observation-boundary pass).
+//
+// Promise unchanged: consistent quality + honest confidence, always produced
+// once a ReasoningResult exists — never withheld for low confidence. Reasoning
+// Notes are internal/audit-only and are deliberately excluded from what this
+// stage ever sees.
+//
+// WHAT CHANGED: this is no longer the public contract. The free Growth Snapshot
+// a visitor receives is built by src/projection/public-snapshot.ts from the
+// evidence layer alone. This stage's output is retained because the Growth
+// Report assembler reads it (tools/assemble-report.ts) and because run-history
+// comparability matters — but it reaches the run log, not the browser, not the
+// email, and not any other public surface.
+//
+// It states a Primary Constraint, so it is judgement, so it is not free.
 
 import { llmJson, loadPrompt } from "../llm/client.js";
 import { renderRegulatorContext } from "../types.js";
@@ -25,32 +35,38 @@ export function isConstraintGated(rr: ReasoningResult): boolean {
   return rr.constraintSafety?.status === "requires-rendered-verification";
 }
 
-// Fixed public copy for the gated case. Reviewed wording, not model output, so
-// Product Council can read verbatim what a stranger will see.
+// Fixed copy for the gated case. Reviewed wording, not model output.
 //
-// It leads with the review having happened. Someone who waited two minutes must
-// not feel nothing occurred — the work was done, and the honest result is that
-// one area cannot be responsibly named without a look at the live page. This is
-// a held position, not a failure, and the copy should read that way.
+// SCOPE CHANGE (observation-boundary pass): this is now INTERNAL copy. Since
+// the public payload became src/projection/public-snapshot.ts, no visitor and
+// no email reader ever sees these words — they reach the run log and the Growth
+// Report assembler only.
 //
-// No numbers, no internal vocabulary, no claim about the business, nothing
-// asserted that has not been verified. Card lengths follow the v1.3 caps
-// (32/24/24/24/24/16); total sits under the 150-word Snapshot ceiling.
+// It was reworded anyway, because the previous version promised twice to "name
+// it as your main constraint" and "name your constraint with confidence". Even
+// held internally, copy that promises the judgement act is one refactor away
+// from a public surface again, and the boundary should not depend on which
+// renderer happens to read it today.
+//
+// It still leads with the review having happened, still asserts nothing about
+// the business that was not verified, and still carries no numbers and no
+// internal vocabulary. Card lengths follow the v1.3 caps (32/24/24/24/24/16);
+// total sits under the 150-word ceiling.
 export function buildUnconfirmedSnapshot(): GrowthSnapshot {
   return {
     primaryConstraint:
       "We reviewed your public pages and gathered enough to see how your business presents itself. " +
-      "One key area still needs visual confirmation before we would responsibly name it as your main constraint.",
+      "One area still needs a look at the live page before we would state anything about it.",
     whatIsGoingWell:
       "Your site is reachable, your main pages read clearly, and the way you describe your business came through without difficulty.",
     whyWeThinkThis:
-      "Some of what matters most only appears once a page is fully open, so we could not confirm it from the published version alone.",
+      "Some of what a visitor sees only appears once a page is fully open, so the published version alone does not show it.",
     howFixingItWillHelp:
-      "A short visual check would let us name your constraint with confidence, so what you act on reflects what visitors actually see.",
+      "A short look at the live page would settle this, so what you act on reflects what visitors actually see.",
     nextSteps:
-      "Save or email this snapshot. A strategy call is the quickest way for us to confirm this properly and give you the finding.",
+      "Save or email this snapshot. A strategy call is the quickest way for us to go through this with you.",
     confidencePlainLanguage:
-      "We would rather flag this for a closer look than name something we cannot stand behind.",
+      "We would rather flag this for a closer look than state something we cannot stand behind.",
     verificationRequired: true,
   };
 }

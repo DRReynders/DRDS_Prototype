@@ -99,6 +99,7 @@ check("gate still detected", isConstraintGated(gated));
 const fixed = buildUnconfirmedSnapshot();
 check("gated copy still fixed and model-free", fixed.verificationRequired === true);
 check("gated copy unchanged by C2", fixed.primaryConstraint.startsWith("We reviewed your public pages"));
+check("gated copy names no constraint", !/constraint/i.test(Object.values(fixed).filter((v) => typeof v === "string").join(" ")));
 check("gated path returns before any prompt render", /if \(isConstraintGated\(rr\)\) return buildUnconfirmedSnapshot\(\);/.test(c5));
 
 console.log("\n=== 5-7. Report assembly gate ===");

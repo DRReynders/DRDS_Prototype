@@ -16,6 +16,7 @@ import { loadEnv } from "./llm/client.js";
 import { LlmNotConfiguredError } from "./llm/provider.js";
 import { beginUsageCollection, BudgetExceededError, collectUsage } from "./llm/usage.js";
 import { writeRunLog } from "./logger.js";
+import { buildPublicSnapshot } from "./projection/public-snapshot.js";
 import { collectSiteCorpus } from "./site.js";
 import type { RunLog } from "./types.js";
 import { randomUUID } from "node:crypto";
@@ -108,41 +109,98 @@ export async function runPipeline(rawUrl: string, onStage?: StageEvent): Promise
     );
 
     log.evidencePackage = await track(
-      "Contract 3 — Evidence (fixed 13-item subset)",
+      "Contract 3 — Evidence (fixed 17-item subset)",
       () => runContract3(corpus),
       (r) => `Coverage: ${r.evidenceCoverage.split(" — ")[0]}`
     );
 
-    const c4 = await track(
-      "Contract 4 — Reasoning (CDER)",
-      // Area C2 (Council-authorised narrow exception): the CIP is passed through
-      // so regulator-sensitivity stays sourced from one place rather than being
-      // duplicated onto GoalModel and ReasoningResult. Read-only context.
-      () => runContract4(log.goalModel!, log.evidencePackage!, corpus, log.cip),
-      (r) =>
-        `${r.result.hypothesisConfidence}${r.escalationTrace?.attempted ? " (after 1 escalation attempt)" : ""}`
-    );
-    log.reasoningResult = c4.result;
-    log.evidencePackage = c4.pkg; // includes any escalation-gathered entry
-    log.escalationTrace = c4.escalationTrace;
+    // The public product, built here and nowhere else.
+    //
+    // It is assembled at the END OF THE OBSERVATION LAYER, before any reasoning
+    // stage runs, which is what makes the boundary structural rather than
+    // editorial: at this point in the pipeline no constraint exists to leak.
+    // Deterministic and free — no model call, no provider, no budget impact.
+    //
+    // Contracts 4 and 5 still run after this (Stage 1 of the approved plan) and
+    // still write to the run log. They no longer decide anything a stranger
+    // sees.
+    log.publicSnapshot = buildPublicSnapshot({
+      input: log.input,
+      cip: log.cip!,
+      evidence: log.evidencePackage,
+      pagesFetched: log.pagesFetched,
+      robots: log.robots,
+    });
 
-    log.growthSnapshot = await track("Contract 5 — Growth Snapshot", () =>
-      runContract5(log.reasoningResult!, log.cip)
-    );
+    // ── THE FAILURE BOUNDARY (Stage 1.1) ───────────────────────────────────
+    //
+    // Everything from here on is INTERNAL. The public product already exists
+    // and cost nothing to build, so a failure below must not destroy it.
+    //
+    // Before this boundary, one try/catch wrapped Contracts 0-5 and set
+    // `log.failure` for any of them. A provider outage during Contract 4 —
+    // reasoning the visitor is not buying and will never see — therefore
+    // replaced a finished Growth Snapshot with a generic error page.
+    //
+    // These stages get their own catch, writing `log.internalFailure` instead.
+    // `log.failure` keeps its original, narrower meaning: the PUBLIC product
+    // could not be produced. Pre-projection failure semantics are untouched.
+    try {
+      const c4 = await track(
+        "Contract 4 — Reasoning (CDER)",
+        // Area C2 (Council-authorised narrow exception): the CIP is passed through
+        // so regulator-sensitivity stays sourced from one place rather than being
+        // duplicated onto GoalModel and ReasoningResult. Read-only context.
+        () => runContract4(log.goalModel!, log.evidencePackage!, corpus, log.cip),
+        (r) =>
+          `${r.result.hypothesisConfidence}${r.escalationTrace?.attempted ? " (after 1 escalation attempt)" : ""}`
+      );
+      log.reasoningResult = c4.result;
+      log.evidencePackage = c4.pkg; // includes any escalation-gathered entry
+      log.escalationTrace = c4.escalationTrace;
+    } catch (err) {
+      log.internalFailure = internalFailureOf("Contract 4", err);
+    }
+
+    // Contract 5 is skipped entirely when Contract 4 did not produce a
+    // ReasoningResult. It writes copy ABOUT a constraint, so with no constraint
+    // there is nothing for it to write — and inventing a substitute diagnosis is
+    // precisely what must never happen.
+    if (log.reasoningResult) {
+      try {
+        log.growthSnapshot = await track("Contract 5 — Growth Snapshot", () =>
+          runContract5(log.reasoningResult!, log.cip)
+        );
+      } catch (err) {
+        log.internalFailure = internalFailureOf("Contract 5", err);
+      }
+    }
 
     return finish(log);
   } catch (err) {
-    log.failure ??= {
-      stage:
-        err instanceof LlmNotConfiguredError
-          ? "configuration"
-          : err instanceof BudgetExceededError
-            ? "budget"
-            : "unexpected",
-      reason: err instanceof Error ? err.message : String(err),
-    };
+    // Reached only for failures BEFORE the public projection exists. Unchanged.
+    log.failure ??= { stage: classifyFailure(err), reason: reasonOf(err) };
     return finish(log);
   }
+}
+
+/** How a thrown error is named in a run log. Shared by both catches so the two
+ *  paths can never classify the same outage differently. */
+function classifyFailure(err: unknown): "configuration" | "budget" | "unexpected" {
+  if (err instanceof LlmNotConfiguredError) return "configuration";
+  if (err instanceof BudgetExceededError) return "budget";
+  return "unexpected";
+}
+
+function reasonOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** An internal-stage failure, named by the Contract that threw and by the kind
+ *  of outage it was. Both are internal-only: no caller may show either to a
+ *  visitor, and nothing here is consulted when building the public payload. */
+function internalFailureOf(stage: string, err: unknown): { stage: string; reason: string } {
+  return { stage, reason: `${classifyFailure(err)}: ${reasonOf(err)}` };
 }
 
 function finish(log: RunLog): PipelineOutcome {

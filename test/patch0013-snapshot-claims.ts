@@ -90,9 +90,13 @@ check("bundling rule intact", /Never bundle two deficiencies into one sentence/.
 check("value ladder rule intact", /Value ladder rule/.test(prompt));
 check("output format unchanged", /"whatIsGoingWell": "\.\.\."/.test(prompt));
 
-console.log("\n=== 8. Gated Snapshot copy is unchanged and itself passes the guard ===");
+console.log("\n=== 8. Gated Snapshot copy still passes the guard ===");
+// Re-anchored by the observation-boundary pass: this copy is now internal and
+// was reworded to drop its "name it as your main constraint" promise. The
+// unmeasured-outcome guard below is unchanged and still applies to it.
 const snap = buildUnconfirmedSnapshot();
-check("gated copy unchanged", snap.primaryConstraint.startsWith("We reviewed your public pages"));
+check("gated copy still leads with the review having happened", snap.primaryConstraint.startsWith("We reviewed your public pages"));
+check("gated copy promises no constraint", !/constraint/i.test(Object.values(snap).filter((v) => typeof v === "string").join(" ")));
 check("verificationRequired still set", snap.verificationRequired === true);
 const gatedText = Object.values(snap).filter((v) => typeof v === "string").join(" ").toLowerCase();
 const FORBIDDEN = [

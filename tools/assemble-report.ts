@@ -43,15 +43,42 @@ export function assemble(log: RunLog, sourceFile: string): string {
   const snap = log.growthSnapshot;
   const entries = log.evidencePackage?.entries ?? [];
 
+  // The diagnosis comes from Contract 4 and from nowhere else. A completed
+  // publicSnapshot is NOT a substitute and is never accepted as one: it states
+  // observations and names no constraint, which is the whole point of it.
   const missing: string[] = [];
   if (!cip) missing.push("Contract 1 (CIP)");
   if (!gm) missing.push("Contract 2 (Goal Model)");
   if (!rr) missing.push("Contract 4 (Reasoning)");
   if (missing.length) {
+    // Stage 1.1 made this refusal easier to hit and harder to understand. Such a
+    // run now looks SUCCESSFUL from every other angle — the visitor received a
+    // complete Growth Snapshot and the run summary says "completed" — so a
+    // founder can reasonably reach for it. Say why it cannot be used, rather
+    // than telling them to "choose a successful run log" when they just did.
+    const internal = log.internalFailure
+      ? ` The run's public Growth Snapshot completed and was delivered to the client, but internal reasoning failed at ${log.internalFailure.stage} (${log.internalFailure.reason}). A delivered Snapshot is an observation, not a diagnosis, and cannot stand in for the missing reasoning.`
+      : "";
     throw new Error(
-      `Run log is missing ${missing.join(", ")} — a Growth Report draft needs a completed run. Choose a successful run log.`
+      `Run log is missing ${missing.join(", ")} — a Growth Report draft needs completed internal reasoning.${internal} ` +
+        `Re-run the pipeline for this business before assembling a Report.`
     );
   }
+
+  // Contract 4 succeeded but a later internal stage did not. The diagnosis is
+  // intact, so the draft is assembled — but the founder is told, because the
+  // Snapshot reference block below will be a placeholder and they should know
+  // that is a failure rather than an oversight.
+  const internalFailureWarning = log.internalFailure
+    ? [
+        F(
+          `⚠ Internal reasoning did not fully complete on this run: ${log.internalFailure.stage} failed (${log.internalFailure.reason}). ` +
+            `The client's public Growth Snapshot was delivered and is unaffected. Check every section below that draws on the internal ` +
+            `Snapshot before relying on it.`
+        ),
+        "",
+      ]
+    : [];
 
   const name = cip!.businessName || "(business name unresolved)";
   const passes = entries.filter((e) => e.resultStatus === "Pass");
@@ -137,17 +164,48 @@ export function assemble(log: RunLog, sourceFile: string): string {
         .join("\n")
     : "_(Every check in this run resolved cleanly — state the evidence boundary of the public-only method instead.)_";
 
-  const snapshotReference = snap
+  // Observation-boundary pass: `growthSnapshot` is INTERNAL and the client
+  // never saw it. What the client actually received is `publicSnapshot`, which
+  // states observations and names no constraint.
+  //
+  // Both are shown, labelled, because the founder needs two different things
+  // here: the internal draft is raw material for the diagnosis, and the public
+  // Snapshot is the only thing the Report must not contradict. Presenting the
+  // internal draft as "what the client was told" — which the old label did —
+  // would now be false, and would invite a Report written to agree with copy
+  // the client never read.
+  //
+  // The Report's DIAGNOSIS still comes from reasoningResult, exactly as before.
+  // Nothing below feeds it.
+  const publicSnap = log.publicSnapshot;
+  const clientSaw = publicSnap
     ? [
         F(
-          "Reference only — what the FREE Snapshot already told this client. The Report must go meaningfully beyond it, and must not contradict it without explanation. Delete this block."
+          "What the client ACTUALLY received, free. The Report must go meaningfully beyond this and must not contradict it without explanation. Delete this block."
         ),
         "",
-        `> _Snapshot said:_ ${snap.primaryConstraint}`,
+        `> _Snapshot showed:_ ${publicSnap.businessRead}`,
+        ...publicSnap.whatWeCanSee.map((x) => `> · ${x.statement}`),
+        ...publicSnap.whatWeCouldNotSettle.map((x) => `> · could not settle ${x.question}`),
+        `> _Evidence confidence:_ ${publicSnap.evidenceConfidence}`,
+      ].join("\n")
+    : F(
+        "This run log predates the public Snapshot projection, so there is no record of what the client was shown. Check before writing anything that assumes it. Delete this block."
+      );
+
+  const internalDraft = snap
+    ? [
+        F(
+          "INTERNAL Snapshot draft — never shown to this client. Raw material for the diagnosis below, not a promise made to anyone. Delete this block."
+        ),
+        "",
+        `> _Internal hypothesis:_ ${snap.primaryConstraint}`,
         `> _Why:_ ${snap.whyWeThinkThis}`,
         `> _Confidence:_ ${snap.confidencePlainLanguage}`,
       ].join("\n")
-    : F("No Snapshot copy in this run log. Delete this block.");
+    : F("No internal Snapshot copy in this run log. Delete this block.");
+
+  const snapshotReference = `${clientSaw}\n\n${internalDraft}`;
 
   const confidencePlain = snap?.confidencePlainLanguage
     ?? `(no snapshot in log — hypothesis confidence recorded as: ${rr!.hypothesisConfidence})`;
@@ -238,7 +296,7 @@ us: it is the foundation everything else stands on.*
 - **What the business appears built to achieve:** ${gm!.businessGoal}
 - **Growth functions a business like this depends on:** ${gm!.expectedGrowthFunctions.join(", ")}
 
-${identityWarning.join("\n")}${regulatorWarning.join("\n")}${F(
+${internalFailureWarning.join("\n")}${identityWarning.join("\n")}${regulatorWarning.join("\n")}${F(
     `Draft one short observed-narrative paragraph from the CIP. CIP notes for reference (delete): ${cip!.notes || "(none)"}`
   )}
 

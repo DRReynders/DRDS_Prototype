@@ -39,7 +39,8 @@ is deliberately no viewer, dashboard, or database.
 | Path | What it is |
 |---|---|
 | `src/contracts/` | One module per Contract (0–5), faithful to Contracts V0.2 |
-| `src/evidence/checks.ts` | The fixed 13-item evidence subset — hardcoded by design |
+| `src/evidence/checks.ts` | The fixed 17-item evidence subset — hardcoded by design |
+| `src/projection/public-snapshot.ts` | The PUBLIC Growth Snapshot — deterministic, built from Contracts 0–3 only |
 | `prompts/*.txt` | Editable prompt text (Prompt Library v1 + two new automation prompts) |
 | `src/pipeline.ts` | Orchestrator — the seam a future web layer calls |
 | `runs/` | One JSON log per run |
@@ -48,10 +49,32 @@ is deliberately no viewer, dashboard, or database.
 
 `npm start` (or `npm run web`) serves the public prototype: CTA form → Waiting
 Room (real pipeline milestones streamed as NDJSON — no artificial timers) →
-five-card Snapshot → optional "Email me this Growth Snapshot" (persistence,
+public Growth Snapshot → optional "Email me this Growth Snapshot" (persistence,
 never a gate). Routes: `GET /`, `POST /api/snapshot` (streams milestones +
 result), `POST /api/email` (sends via Resend; honest not-configured state
 without a key).
+
+### The public observation boundary
+
+> The Growth Snapshot may state what is observably true.
+> Only the Growth Report may state what matters most.
+
+The free product returns a **`PublicSnapshot`** (`src/projection/public-snapshot.ts`):
+what we can see, why we think it, what is working, what public evidence could
+not settle, evidence confidence, and a receipt of the pages actually read. It
+is built from Contracts 0–3 only, deterministically, with no model call — the
+builder's input type cannot reach a `ReasoningResult`, so no constraint exists
+for it to publish.
+
+Contracts 4 and 5 still run and still write to the run log. `ReasoningResult`
+(with `primaryConstraint`, `secondaryConstraints`, `hypothesisConfidence`,
+supporting/contradictory evidence, `constraintSafety`, `reasoningNotes`) and the
+internal `GrowthSnapshot` remain the Growth Report's raw material — internal,
+never published. `tools/assemble-report.ts` reads them unchanged.
+
+The wire payload carries `publicSnapshot` and nothing else; judgement fields are
+absent from it rather than hidden by the UI. `test/public-snapshot-boundary.ts`
+and `test/public-projection-replay.ts` enforce that offline, at no cost.
 
 Public-exposure guards: SSRF protection (private/local targets refused),
 per-IP rate limit (`RATE_LIMIT_RUNS_PER_HOUR`), per-run cost cap

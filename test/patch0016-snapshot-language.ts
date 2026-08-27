@@ -114,9 +114,13 @@ check("150-word ceiling intact", /150 words total/.test(prompt));
 check("two-pass compression intact", /PASS 1 \(draft\)/.test(prompt) && /PASS 2 \(compress\)/.test(prompt));
 check("no caveat-sentence loophole introduced", /must not add a caveat sentence to buy yourself room/.test(flat));
 
-console.log("\n=== 9. Gated Snapshot copy unchanged and compliant ===");
+console.log("\n=== 9. Gated Snapshot copy compliant ===");
+// Re-anchored by the observation-boundary pass. The copy is now internal and no
+// longer promises to name a main constraint; every plain-language and
+// calibration rule below still holds against it unchanged.
 const snap = buildUnconfirmedSnapshot();
-check("gated copy unchanged", snap.primaryConstraint.startsWith("We reviewed your public pages"));
+check("gated copy still leads with the review having happened", snap.primaryConstraint.startsWith("We reviewed your public pages"));
+check("gated copy promises no constraint", !/constraint/i.test(Object.values(snap).filter((v) => typeof v === "string").join(" ")));
 check("verificationRequired still set", snap.verificationRequired === true);
 const gated = Object.values(snap).filter((v) => typeof v === "string").join(" ").toLowerCase();
 for (const term of ["evidence", "checks", "assessed", "usable", "coverage", "indeterminate", "pipeline", "corpus", "run log", "growth function"]) {
