@@ -189,7 +189,7 @@ export function rateLimitCheck(ip: string): { allowed: boolean; message?: string
       // clickable Strategy Call link for this state (see GRACEFUL_FALLBACK_STATES
       // in index.html). Keeping it out of this string avoids saying it twice.
       message:
-        `You've reached today's limit for instant Growth Audits from this connection. ` +
+        `You've reached the limit for instant Growth Snapshots from this connection. ` +
         `Try again in about ${retryMinutes} minute${retryMinutes === 1 ? "" : "s"}.`,
     };
   }
@@ -338,7 +338,7 @@ export function evaluateDailyBudget(config: DailyBudgetConfig, ledger: SpendLedg
       allowed: false,
       state: "daily_capacity",
       message:
-        "We've reached today's capacity for Growth Audits. Please try again tomorrow — this isn't a reflection of your business, simply a temporary capacity limit.",
+        "We've reached today's capacity for Growth Snapshots. Please try again tomorrow — this isn't a reflection of your business, simply a temporary capacity limit.",
     };
   }
   return { allowed: true };

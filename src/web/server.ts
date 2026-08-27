@@ -29,14 +29,26 @@ let busy = false; // one run at a time — deliberate, not a missing feature
 
 // Real pipeline stages -> visitor-facing Waiting Room milestones. These fire
 // when the stage actually starts — no artificial timers, no fake narration.
+//
+// Observation-boundary pass: these labels are PUBLIC copy and were rewritten to
+// match the free product's promise. The old Contract 4 label,
+// "Reasoning about what's most limiting your growth", announced the judgement
+// act to a visitor who is not buying judgement, and the old Contract 5 label
+// promised a Snapshot that stage no longer writes.
+//
+// Every label still describes work that is genuinely happening — no stage was
+// hidden and none was invented — but describes it as activity rather than as
+// architecture. Contracts 2 and 4 still run and still produce the internal
+// hypothesis; a visitor is simply not told that a constraint is being chosen,
+// because the answer they are about to receive does not contain one.
 const MILESTONES: [prefix: string, label: string][] = [
   ["Contract 0", "Confirming your website is reachable"],
-  ["Site corpus", "Reading your website's pages"],
-  ["Contract 1", "Identifying your business"],
-  ["Contract 2", "Understanding what your business is trying to achieve"],
-  ["Contract 3", "Gathering evidence about your online presence"],
-  ["Contract 4", "Reasoning about what's most limiting your growth"],
-  ["Contract 5", "Writing your Growth Snapshot"],
+  ["Site corpus", "Reading your published pages"],
+  ["Contract 1", "Identifying your business from its own pages"],
+  ["Contract 2", "Setting the context for the evidence review"],
+  ["Contract 3", "Checking what your public pages show"],
+  ["Contract 4", "Reviewing what the evidence does and does not settle"],
+  ["Contract 5", "Finalising your Growth Snapshot"],
 ];
 
 // Every JSON response goes through here, so attaching the browser-origin headers
@@ -56,7 +68,7 @@ function json(req: IncomingMessage, res: ServerResponse, status: number, body: u
 // file (log.failure, log.stages) and to stdout here (see logRunSummary) — this
 // function only controls what the client is shown.
 const GENERIC_FAILURE_MESSAGE =
-  "We couldn't complete this Growth Audit just now. This is usually temporary — please try again shortly.";
+  "We couldn't complete this Growth Snapshot just now. This is usually temporary — please try again shortly.";
 
 function clientFacingFailureMessage(failure: { stage: string; reason: string }): { state: string; message: string } {
   switch (failure.stage) {
@@ -177,7 +189,7 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
     json(req, res, 503, {
       type: "error",
       state: "busy",
-      message: "We're completing another Growth Audit right now. Please try again in a few minutes.",
+      message: "We're completing another Growth Snapshot right now. Please try again in a few minutes.",
     });
     return;
   }
@@ -226,13 +238,25 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
       const { state, message } = clientFacingFailureMessage(log.failure);
       write({ type: "error", state, message });
     } else {
+      // THE PUBLIC WIRE CONTRACT.
+      //
+      // `publicSnapshot` carries the observation projection and nothing else.
+      // `log.growthSnapshot` — the internal Contract 5 output, which does name
+      // and rank a constraint — is deliberately NOT written here. The judgement
+      // fields are absent from the payload, not hidden by the UI: a frontend
+      // cannot render what it was never sent, and a future frontend edit cannot
+      // reintroduce the leak.
+      //
+      // The key was renamed from `snapshot` on purpose. A client built against
+      // the old contract now fails its shape check and shows an honest error,
+      // rather than silently rendering blank cards from missing fields.
       write({
         type: "result",
         state: "snapshot",
         mockMode: (process.env.DRDS_LLM_PROVIDER || "anthropic").toLowerCase() === "mock",
         runId: log.runId,
         businessName: log.cip?.businessName,
-        snapshot: log.growthSnapshot,
+        publicSnapshot: log.publicSnapshot,
       });
     }
     res.end();
@@ -262,7 +286,11 @@ async function handleEmail(req: IncomingMessage, res: ServerResponse): Promise<v
       return;
     }
     const found = findRunLogByRunId(runId);
-    if (!found || !found.log.growthSnapshot) {
+    // publicSnapshot, never growthSnapshot: the email is a public surface and
+    // may only ever carry the observation projection. A run log written before
+    // the observation-boundary pass has no publicSnapshot, so it is treated as
+    // not found rather than emailed from the internal object.
+    if (!found || !found.log.publicSnapshot) {
       json(req, res, 404, { state: "not_found", message: "We couldn't find that Snapshot. Please run the analysis again." });
       return;
     }
@@ -274,7 +302,7 @@ async function handleEmail(req: IncomingMessage, res: ServerResponse): Promise<v
       const sent = await sendSnapshotEmail(
         email,
         found.log.cip?.businessName ?? found.log.input.normalisedBusinessIdentifier,
-        found.log.growthSnapshot
+        found.log.publicSnapshot
       );
       found.log.emailDelivery = { to: email, sentAt: new Date().toISOString(), provider: sent.provider, status: "sent" };
       updateRunLog(found.file, found.log);

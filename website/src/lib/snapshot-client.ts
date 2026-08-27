@@ -6,23 +6,56 @@
 // If the diagnostic runtime is replaced, this file's contract is what the
 // replacement must honour — not the other way round.
 //
-// It also holds no judgement. The Snapshot's findings are produced by the
-// backend and rendered as received; the website never re-derives, re-ranks or
-// re-words a constraint. That boundary is the product boundary.
+// It also holds no judgement — and since the observation-boundary pass it is
+// not sent any. The backend's public contract carries observations, strengths,
+// open questions, evidence confidence and a receipt. It does not carry a
+// constraint, a ranking, or a claim about what fixing something would do.
+// The site therefore cannot render one, whatever its copy says. That boundary
+// is the product boundary, and it lives in the payload rather than the wording.
 
 import { SNAPSHOT_API_ORIGIN } from "./config";
 import { sanitiseMilestone, toFailure, type SnapshotFailure } from "./snapshot-states";
 
-/** The Snapshot result shape, mirroring the backend's GrowthSnapshot contract.
+/** The PUBLIC Snapshot contract, mirroring the backend's PublicSnapshot.
+ *
+ *  This is an observation contract. There is deliberately no constraint here,
+ *  no ranking, no "what changes if you fix it", and no confidence in a selected
+ *  problem — the backend does not send those fields, so this site could not
+ *  render them even if a future edit tried to.
+ *
  *  Additive fields are tolerated; the site reads named fields only. */
-export interface GrowthSnapshot {
-  primaryConstraint: string;
-  whatIsGoingWell: string;
-  whyWeThinkThis: string;
-  howFixingItWillHelp: string;
-  nextSteps: string;
-  confidencePlainLanguage: string;
-  verificationRequired?: boolean;
+export interface PublicSignal {
+  /** What the published pages showed. */
+  statement: string;
+  /** The counted detail behind it — rendered under "Why we think this". */
+  proof: string;
+  /** The page(s) it was read from. */
+  source: string;
+}
+
+export interface PublicUnsettled {
+  question: string;
+  reason: string;
+}
+
+export interface PublicReceipt {
+  pagesInspected: string[];
+  pagesInspectedCount: number;
+  signalsChecked: number;
+  signalsSettled: number;
+  notInspected: string[];
+  limitations: string[];
+}
+
+export interface PublicSnapshot {
+  businessRead: string;
+  whatWeCanSee: PublicSignal[];
+  whatIsWorking: PublicSignal[];
+  whatWeCouldNotSettle: PublicUnsettled[];
+  /** Confidence in the EVIDENCE, never in a constraint. */
+  evidenceConfidence: string;
+  evidenceReceipt: PublicReceipt;
+  boundaryNote: string;
 }
 
 export interface SnapshotResult {
@@ -30,7 +63,7 @@ export interface SnapshotResult {
    *  the handle a durable result URL would later be built on. */
   runId: string;
   businessName?: string;
-  snapshot: GrowthSnapshot;
+  snapshot: PublicSnapshot;
   mockMode?: boolean;
 }
 
@@ -150,11 +183,15 @@ export async function runSnapshot(url: string, handlers: SnapshotHandlers, signa
     handlers.onFailure(toFailure(event.state, event.message));
     return;
   }
-  if (event.type === "result" && isRecord(event.snapshot) && typeof event.runId === "string") {
+  // `publicSnapshot`, not `snapshot`. The backend renamed the key when the
+  // public contract changed shape, precisely so a client built against the old
+  // one fails this check and shows an honest error rather than quietly
+  // rendering empty cards from fields that no longer exist.
+  if (event.type === "result" && isRecord(event.publicSnapshot) && typeof event.runId === "string") {
     handlers.onResult({
       runId: event.runId,
       businessName: typeof event.businessName === "string" ? event.businessName : undefined,
-      snapshot: event.snapshot as unknown as GrowthSnapshot,
+      snapshot: event.publicSnapshot as unknown as PublicSnapshot,
       mockMode: event.mockMode === true,
     });
     return;

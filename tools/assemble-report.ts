@@ -137,17 +137,48 @@ export function assemble(log: RunLog, sourceFile: string): string {
         .join("\n")
     : "_(Every check in this run resolved cleanly — state the evidence boundary of the public-only method instead.)_";
 
-  const snapshotReference = snap
+  // Observation-boundary pass: `growthSnapshot` is INTERNAL and the client
+  // never saw it. What the client actually received is `publicSnapshot`, which
+  // states observations and names no constraint.
+  //
+  // Both are shown, labelled, because the founder needs two different things
+  // here: the internal draft is raw material for the diagnosis, and the public
+  // Snapshot is the only thing the Report must not contradict. Presenting the
+  // internal draft as "what the client was told" — which the old label did —
+  // would now be false, and would invite a Report written to agree with copy
+  // the client never read.
+  //
+  // The Report's DIAGNOSIS still comes from reasoningResult, exactly as before.
+  // Nothing below feeds it.
+  const publicSnap = log.publicSnapshot;
+  const clientSaw = publicSnap
     ? [
         F(
-          "Reference only — what the FREE Snapshot already told this client. The Report must go meaningfully beyond it, and must not contradict it without explanation. Delete this block."
+          "What the client ACTUALLY received, free. The Report must go meaningfully beyond this and must not contradict it without explanation. Delete this block."
         ),
         "",
-        `> _Snapshot said:_ ${snap.primaryConstraint}`,
+        `> _Snapshot showed:_ ${publicSnap.businessRead}`,
+        ...publicSnap.whatWeCanSee.map((x) => `> · ${x.statement}`),
+        ...publicSnap.whatWeCouldNotSettle.map((x) => `> · could not settle ${x.question}`),
+        `> _Evidence confidence:_ ${publicSnap.evidenceConfidence}`,
+      ].join("\n")
+    : F(
+        "This run log predates the public Snapshot projection, so there is no record of what the client was shown. Check before writing anything that assumes it. Delete this block."
+      );
+
+  const internalDraft = snap
+    ? [
+        F(
+          "INTERNAL Snapshot draft — never shown to this client. Raw material for the diagnosis below, not a promise made to anyone. Delete this block."
+        ),
+        "",
+        `> _Internal hypothesis:_ ${snap.primaryConstraint}`,
         `> _Why:_ ${snap.whyWeThinkThis}`,
         `> _Confidence:_ ${snap.confidencePlainLanguage}`,
       ].join("\n")
-    : F("No Snapshot copy in this run log. Delete this block.");
+    : F("No internal Snapshot copy in this run log. Delete this block.");
+
+  const snapshotReference = `${clientSaw}\n\n${internalDraft}`;
 
   const confidencePlain = snap?.confidencePlainLanguage
     ?? `(no snapshot in log — hypothesis confidence recorded as: ${rr!.hypothesisConfidence})`;

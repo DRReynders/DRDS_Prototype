@@ -281,10 +281,13 @@ check(
 
 const capacityText = atLimit.allowed === false ? atLimit.message : "";
 check(
-  "at-capacity wording is the reviewed line, unchanged",
-  capacityText.startsWith("We've reached today's capacity for Growth Audits."),
+  "at-capacity wording is the reviewed line",
+  capacityText.startsWith("We've reached today's capacity for Growth Snapshots."),
   capacityText
 );
+// Re-anchored by the observation-boundary pass: "Growth Audit" is a retired
+// product name, and this string is forwarded verbatim to the public site.
+check("at-capacity refusal uses the current product name", !/Growth Audit/i.test(capacityText), capacityText);
 check("at-capacity refusal names no figure", !/\d/.test(capacityText), capacityText);
 
 withBudget("sk-should-never-appear", () => {
@@ -482,8 +485,13 @@ check("guards.ts reads no forwarded chain", !/x-forwarded-for/i.test(stripCommen
 check("server.ts reads no forwarded chain", !/x-forwarded-for/i.test(stripComments(serverSource)));
 check("server.ts reads the documented X-Real-IP header", /headers\["x-real-ip"\]/.test(serverSource));
 
-console.log("\n=== 15. Snapshot diagnostic contracts untouched ===");
+console.log("\n=== 15. Internal diagnostic contracts untouched; the public one is separate ===");
 
+// Re-anchored by the observation-boundary pass. This section used to assert
+// that the PUBLIC Snapshot still carried primaryConstraint and
+// howFixingItWillHelp. It now asserts the approved arrangement instead: the
+// internal GrowthSnapshot keeps every field, so the Growth Report keeps its raw
+// material, while the public projection carries none of them.
 const types = await import("../src/types.js");
 const snapshot = await import("../src/contracts/contract5-snapshot.js");
 const gated = snapshot.buildUnconfirmedSnapshot();
@@ -496,10 +504,13 @@ for (const field of [
   "confidencePlainLanguage",
 ]) {
   check(
-    `GrowthSnapshot still carries ${field}`,
+    `internal GrowthSnapshot still carries ${field}`,
     typeof (gated as unknown as Record<string, unknown>)[field] === "string"
   );
 }
+const projection = await import("../src/projection/public-snapshot.js");
+check("public projection builder is exported", typeof projection.buildPublicSnapshot === "function");
+check("public boundary note hands judgement to the Report", /That judgement is the Growth Report\./.test(projection.BOUNDARY_NOTE));
 check("gated Snapshot still flags verificationRequired", gated.verificationRequired === true);
 check("Contract 5 gate helper still exported", typeof snapshot.isConstraintGated === "function");
 check("renderRegulatorContext still exported", typeof types.renderRegulatorContext === "function");

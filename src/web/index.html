@@ -90,6 +90,17 @@
   .section p { font-size: .95rem; line-height: 1.7; margin: 0; color: var(--ink); }
 
   .confidence { font-style: italic; color: var(--slate); font-size: .85rem; margin: 0 0 1.75rem; }
+  .boundary { font-size: .95rem; color: var(--slate); }
+  .findings { list-style: none; margin: 0; padding: 0; display: grid; gap: .9rem; }
+  .findings li { display: grid; gap: .2rem; }
+  .findings-statement { font-size: .95rem; line-height: 1.7; margin: 0; color: var(--ink); }
+  /* The receipt for the statement above it — quieter on purpose, so it reads as
+     something to check rather than as a second finding. */
+  .findings-proof { font-size: .85rem; line-height: 1.55; margin: 0; color: var(--slate); }
+  .findings-empty { font-size: .95rem; line-height: 1.7; color: var(--slate); }
+  .receipt { list-style: none; margin: .4rem 0 0; padding: 0; display: grid; gap: .25rem;
+             font-size: .8rem; color: var(--slate); overflow-wrap: anywhere; }
+  .receipt.muted { margin-top: .75rem; opacity: .8; }
 
   .continue {
     text-align: center; background: var(--gold-tint); border-radius: 8px;
@@ -122,15 +133,17 @@
 </head>
 <body>
 <div class="page">
-  <div class="kicker">DRDS Growth Audit</div>
-  <h1>Find your single biggest growth constraint</h1>
+  <div class="kicker">DRDS Growth Snapshot</div>
+  <h1>See what your public evidence says about your growth</h1>
   <p class="lede">Enter your business website and receive a Growth Snapshot — a short,
-  specific diagnosis of the one thing currently limiting your growth, based on
-  genuine, publicly observable evidence.</p>
+  specific read of what is publicly observable about your business: what we can see,
+  what is working, and what public evidence cannot settle.</p>
+  <p class="lede boundary">The Snapshot does not diagnose your main constraint or
+  prescribe the order of work. That is the Growth Report.</p>
 
   <form id="form" class="inline">
     <input type="text" id="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="yourbusiness.co.za" required>
-    <button type="submit" id="go">Get my Growth Snapshot</button>
+    <button type="submit" id="go">Run my Growth Snapshot</button>
   </form>
 
   <!-- Waiting Room: each line appears when that pipeline stage actually starts. -->
@@ -151,22 +164,28 @@
       <p class="brief-name" id="bizName"></p>
       <p class="brief-date" id="preparedDate"></p>
 
-      <div class="finding"><p id="primaryConstraint"></p></div>
+      <blockquote class="finding"><p id="businessRead"></p></blockquote>
 
-      <!-- Card order (PC-003): claim, then the evidence that supports it,
-           then balancing context, then stakes, then action — evidence
-           immediately follows the claim it's justifying, rather than
-           making the reader wait through unrelated praise first. -->
-      <div class="section"><h2>Why we think this</h2><p id="whyWeThinkThis"></p></div>
-      <div class="section"><h2>What is going well</h2><p id="whatIsGoingWell"></p></div>
-      <div class="section"><h2>What changes if this is fixed</h2><p id="howFixingItWillHelp"></p></div>
-      <div class="section"><h2>Next steps</h2><p id="nextSteps"></p></div>
+      <!-- The approved observation architecture. "Why we think this" is not a
+           section of its own: it is the counted proof rendered under each
+           observation, so a reader can always tell which receipt backs which
+           line. There is no constraint card, because the payload carries no
+           constraint. -->
+      <div class="section"><h2>What we can see</h2><ul id="signals" class="findings"></ul></div>
+      <div class="section"><h2>What is working</h2><ul id="strengths" class="findings"></ul></div>
+      <div class="section"><h2>What we could not settle</h2><ul id="unsettled" class="findings"></ul></div>
+      <div class="section"><h2>Confidence</h2><p id="confidenceBody"></p></div>
+      <div class="section"><h2>Evidence receipt</h2>
+        <p id="receiptSummary"></p>
+        <ul id="receiptPages" class="receipt"></ul>
+        <ul id="receiptLimits" class="receipt muted"></ul>
+      </div>
 
-      <p class="confidence" id="confidence"></p>
+      <p class="confidence" id="boundaryNote"></p>
 
       <!-- Journey continuation (PC-003): one primary next step, not a menu. -->
       <div class="continue">
-        <p class="continue-lead">Want to explore this constraint in more depth?</p>
+        <p class="continue-lead">Want to know which of this actually matters, and in what order?</p>
         <a class="continue-cta" href="https://drdigitalsystems.co.za/strategy-call/">Book a Strategy Call</a>
       </div>
 
@@ -236,11 +255,31 @@
       $("mockBanner").classList.toggle("hidden", !final.mockMode);
       $("bizName").textContent = final.businessName || "Your business";
       $("preparedDate").textContent = "Prepared " + new Date().toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" }) + " · based on publicly observable evidence";
-      for (const k of ["whatIsGoingWell","whyWeThinkThis","howFixingItWillHelp","nextSteps"]) {
-        $(k).textContent = final.snapshot[k];
-      }
-      $("primaryConstraint").textContent = final.snapshot.primaryConstraint;
-      $("confidence").textContent = final.snapshot.confidencePlainLanguage;
+
+      // `publicSnapshot`, not `snapshot`: the observation contract. Nothing
+      // here reads a constraint, because the payload no longer carries one.
+      const s = final.publicSnapshot;
+      if (!s) { showNotice("We couldn't complete this Growth Snapshot just now. Please try again shortly."); return; }
+
+      $("businessRead").textContent = s.businessRead || "";
+      renderFindings("signals", s.whatWeCanSee, EMPTY.signals);
+      renderFindings("strengths", s.whatIsWorking, EMPTY.strengths);
+      renderFindings("unsettled", (s.whatWeCouldNotSettle || []).map(function (u) {
+        return { statement: "We could not settle " + u.question + ".", proof: u.reason };
+      }), EMPTY.unsettled);
+      $("confidenceBody").textContent = s.evidenceConfidence || "";
+
+      const r = s.evidenceReceipt || {};
+      const pages = r.pagesInspectedCount || 0;
+      $("receiptSummary").textContent = pages
+        ? "We read " + pages + " of your published page" + (pages === 1 ? "" : "s") +
+          " and looked at " + r.signalsChecked + " thing" + (r.signalsChecked === 1 ? "" : "s") +
+          ", of which " + r.signalsSettled + " settled."
+        : "No published page could be read on this run.";
+      renderLines("receiptPages", r.pagesInspected || []);
+      renderLines("receiptLimits", r.limitations || []);
+      $("boundaryNote").textContent = s.boundaryNote || "";
+
       $("saveMsg").classList.add("hidden");
       $("email").value = "";
       $("sendBtn").disabled = false;
@@ -252,6 +291,47 @@
       $("go").disabled = false;
     }
   });
+
+  const EMPTY = {
+    signals: "Nothing we looked at settled cleanly enough on this site for us to state it here.",
+    strengths: "Nothing we looked at settled cleanly enough for us to point to it as a strength. That is a limit of what we could read, not a verdict on your business.",
+    unsettled: "Everything we looked at reached a conclusion in this run.",
+  };
+
+  // textContent throughout — backend output is data, never markup.
+  function renderFindings(id, items, empty) {
+    const list = $(id);
+    list.replaceChildren();
+    if (!items || !items.length) {
+      const li = document.createElement("li");
+      li.className = "findings-empty";
+      li.textContent = empty;
+      list.appendChild(li);
+      return;
+    }
+    for (const item of items) {
+      const li = document.createElement("li");
+      const statement = document.createElement("p");
+      statement.className = "findings-statement";
+      statement.textContent = item.statement;
+      const proof = document.createElement("p");
+      proof.className = "findings-proof";
+      proof.textContent = item.proof;
+      li.appendChild(statement);
+      li.appendChild(proof);
+      list.appendChild(li);
+    }
+  }
+
+  function renderLines(id, values) {
+    const list = $(id);
+    list.replaceChildren();
+    for (const value of values) {
+      const li = document.createElement("li");
+      li.textContent = value;
+      list.appendChild(li);
+    }
+  }
 
   function addMilestone(label) {
     for (const li of $("milestones").children) li.classList.add("done");

@@ -16,6 +16,7 @@ import { loadEnv } from "./llm/client.js";
 import { LlmNotConfiguredError } from "./llm/provider.js";
 import { beginUsageCollection, BudgetExceededError, collectUsage } from "./llm/usage.js";
 import { writeRunLog } from "./logger.js";
+import { buildPublicSnapshot } from "./projection/public-snapshot.js";
 import { collectSiteCorpus } from "./site.js";
 import type { RunLog } from "./types.js";
 import { randomUUID } from "node:crypto";
@@ -108,10 +109,28 @@ export async function runPipeline(rawUrl: string, onStage?: StageEvent): Promise
     );
 
     log.evidencePackage = await track(
-      "Contract 3 — Evidence (fixed 13-item subset)",
+      "Contract 3 — Evidence (fixed 17-item subset)",
       () => runContract3(corpus),
       (r) => `Coverage: ${r.evidenceCoverage.split(" — ")[0]}`
     );
+
+    // The public product, built here and nowhere else.
+    //
+    // It is assembled at the END OF THE OBSERVATION LAYER, before any reasoning
+    // stage runs, which is what makes the boundary structural rather than
+    // editorial: at this point in the pipeline no constraint exists to leak.
+    // Deterministic and free — no model call, no provider, no budget impact.
+    //
+    // Contracts 4 and 5 still run after this (Stage 1 of the approved plan) and
+    // still write to the run log. They no longer decide anything a stranger
+    // sees.
+    log.publicSnapshot = buildPublicSnapshot({
+      input: log.input,
+      cip: log.cip!,
+      evidence: log.evidencePackage,
+      pagesFetched: log.pagesFetched,
+      robots: log.robots,
+    });
 
     const c4 = await track(
       "Contract 4 — Reasoning (CDER)",

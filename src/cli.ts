@@ -34,15 +34,40 @@ if (log.failure) {
   process.exit(2);
 }
 
-const s = log.growthSnapshot!;
-console.log(`\n================ GROWTH SNAPSHOT ================`);
+// What a visitor actually receives. Printed first, and printed in full, so a
+// developer running the pipeline sees the PUBLIC product before the internal
+// one — the same order of importance the product now has.
+const p = log.publicSnapshot!;
+console.log(`\n================ GROWTH SNAPSHOT (PUBLIC) ================`);
 console.log(`Business: ${log.cip?.businessName} (${log.input.normalisedBusinessIdentifier})\n`);
-console.log(`PRIMARY CONSTRAINT\n${s.primaryConstraint}\n`);
-console.log(`WHAT IS GOING WELL\n${s.whatIsGoingWell}\n`);
-console.log(`WHY WE THINK THIS\n${s.whyWeThinkThis}\n`);
-console.log(`HOW FIXING IT WILL HELP\n${s.howFixingItWillHelp}\n`);
-console.log(`NEXT STEPS\n${s.nextSteps}\n`);
-console.log(`CONFIDENCE\n${s.confidencePlainLanguage}`);
-console.log(`=================================================`);
+console.log(`${p.businessRead}\n`);
+console.log(`WHAT WE CAN SEE`);
+for (const x of p.whatWeCanSee) console.log(`  · ${x.statement}\n      why: ${x.proof}`);
+if (!p.whatWeCanSee.length) console.log(`  (none)`);
+console.log(`\nWHAT IS WORKING`);
+for (const x of p.whatIsWorking) console.log(`  · ${x.statement}\n      why: ${x.proof}`);
+if (!p.whatIsWorking.length) console.log(`  (none)`);
+console.log(`\nWHAT WE COULD NOT SETTLE`);
+for (const x of p.whatWeCouldNotSettle) console.log(`  · ${x.question}\n      because: ${x.reason}`);
+if (!p.whatWeCouldNotSettle.length) console.log(`  (none)`);
+console.log(`\nCONFIDENCE IN THIS EVIDENCE\n  ${p.evidenceConfidence}`);
+console.log(`\nEVIDENCE RECEIPT`);
+console.log(`  ${p.evidenceReceipt.pagesInspectedCount} page(s) read; ${p.evidenceReceipt.signalsSettled} of ${p.evidenceReceipt.signalsChecked} checks settled.`);
+for (const u of p.evidenceReceipt.pagesInspected) console.log(`  - ${u}`);
+for (const l of p.evidenceReceipt.limitations) console.log(`  ! ${l}`);
+console.log(`\n${p.boundaryNote}`);
+console.log(`==========================================================`);
+
+// The internal hypothesis. Retained for the Growth Report and for evaluation;
+// never shown to a visitor by any surface. Labelled here so a developer reading
+// CLI output can never mistake it for the free product.
+const s = log.growthSnapshot;
+if (s) {
+  console.log(`\n--------- INTERNAL ONLY — NOT PUBLIC, NOT FREE -----------`);
+  console.log(`Primary Constraint (hypothesis, ${log.reasoningResult?.hypothesisConfidence}): ${s.primaryConstraint}`);
+  console.log(`Secondary: ${log.reasoningResult?.secondaryConstraints.join("; ") || "none"}`);
+  console.log(`Growth Report raw material. Never rendered to a stranger.`);
+  console.log(`----------------------------------------------------------`);
+}
 printUsage();
 console.error(`\nRun log: ${logFile}`);

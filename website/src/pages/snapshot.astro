@@ -10,12 +10,13 @@
 //
 // This page must never claim to identify, rank or prioritise a constraint.
 //
-// KNOWN GAP, reported to Product Council and deliberately NOT patched here: the
-// backend contract still returns a `primaryConstraint` field (alongside
-// `secondaryConstraints` in the reasoning stage), so the result blockquote below
-// can render a prioritised claim regardless of what this page's copy says. That
-// is a product-logic question, not a wording one, and changing the contract was
-// out of scope for a copy pass.
+// KNOWN GAP — NOW CLOSED. This page previously carried a note saying the
+// backend still returned `primaryConstraint`, so the result blockquote could
+// render a prioritised claim regardless of the copy around it. Product Council
+// approved Option A and the backend now sends a PublicSnapshot: observations,
+// strengths, open questions, evidence confidence and a receipt. There is no
+// constraint field in the payload to render, so the boundary no longer depends
+// on this file's wording.
 //
 // Every state the run can end in has a real container here, present in the
 // served HTML and revealed by the client script. Nothing is injected as a
@@ -126,13 +127,19 @@ const apiOrigin = SNAPSHOT_API_ORIGIN;
       </div>
     </section>
 
-    <!-- RESULT STATE. Five cards, in the reviewed order: the claim, then the
-         evidence for it, then balancing context, then stakes, then action. -->
+    <!-- RESULT STATE. The approved observation architecture, in order:
+         what we can see · why we think this · what is working ·
+         what we could not settle · confidence · evidence receipt.
+
+         "Why we think this" is not a separate finding — it is the counted
+         proof behind each observation above it, rendered as the receipt for
+         that specific line. Every list container exists in the served HTML and
+         is filled by the script; nothing is injected as markup. -->
     <section id="state-result" class="state" hidden aria-labelledby="result-heading">
       <article class="panel stack">
         <p class="kicker">Growth Snapshot</p>
         <!-- tabindex="-1" so focus can be moved here when the result arrives:
-             the visitor is taken to the finding rather than left at the form. -->
+             the visitor is taken to the result rather than left at the form. -->
         <h2 id="result-heading" class="result__business" tabindex="-1"></h2>
         <p id="result-prepared" class="muted"></p>
 
@@ -140,28 +147,34 @@ const apiOrigin = SNAPSHOT_API_ORIGIN;
           Mock output — structural testing only, not a real analysis of this business.
         </p>
 
-        <blockquote class="result__constraint">
-          <p id="result-constraint"></p>
+        <blockquote class="result__read">
+          <p id="result-business-read"></p>
         </blockquote>
 
         <div class="result__section">
-          <h3>Why we think this</h3>
-          <p id="result-why"></p>
+          <h3>What we can see</h3>
+          <ul id="result-signals" class="findings"></ul>
         </div>
         <div class="result__section">
-          <h3>What is going well</h3>
-          <p id="result-well"></p>
+          <h3>What is working</h3>
+          <ul id="result-strengths" class="findings"></ul>
         </div>
         <div class="result__section">
-          <h3>What changes if this is fixed</h3>
-          <p id="result-help"></p>
+          <h3>What we could not settle</h3>
+          <ul id="result-unsettled" class="findings"></ul>
         </div>
         <div class="result__section">
-          <h3>Next steps</h3>
-          <p id="result-next"></p>
+          <h3>Confidence</h3>
+          <p id="result-confidence" class="result__confidence"></p>
+        </div>
+        <div class="result__section">
+          <h3>Evidence receipt</h3>
+          <p id="result-receipt-summary"></p>
+          <ul id="result-pages" class="receipt"></ul>
+          <ul id="result-limitations" class="receipt receipt--muted"></ul>
         </div>
 
-        <p id="result-confidence" class="result__confidence"></p>
+        <p id="result-boundary" class="result__boundary"></p>
       </article>
 
       <!-- GROWTH REPORT CTA — placed after the result, where the visitor has
@@ -228,6 +241,70 @@ const apiOrigin = SNAPSHOT_API_ORIGIN;
       $(id).textContent = value ?? "";
     };
 
+    // Copy for a list that came back empty. Kept here rather than injected from
+    // the backend so an absent section still reads as a considered outcome.
+    const EMPTY = {
+      signals: "Nothing we looked at settled cleanly enough on this site for us to state it here.",
+      strengths:
+        "Nothing we looked at settled cleanly enough for us to point to it as a strength. That is a limit of what we could read, not a verdict on your business.",
+      unsettled: "Everything we looked at reached a conclusion in this run.",
+    };
+
+    interface Signal {
+      statement: string;
+      proof: string;
+      source: string;
+    }
+    interface Unsettled {
+      question: string;
+      reason: string;
+    }
+
+    /** One observation, with its proof beneath it. The proof line IS the
+     *  "why we think this" for that specific statement — kept attached to the
+     *  claim rather than collected into a separate section, so a reader can
+     *  never mistake which receipt belongs to which line. */
+    function renderFindings(id: string, items: Signal[] | undefined, empty: string): void {
+      const list = $<HTMLUListElement>(id);
+      list.replaceChildren();
+      if (!items?.length) {
+        const li = document.createElement("li");
+        li.className = "findings__empty";
+        li.textContent = empty;
+        list.append(li);
+        return;
+      }
+      for (const item of items) {
+        const li = document.createElement("li");
+        const statement = document.createElement("p");
+        statement.className = "findings__statement";
+        statement.textContent = item.statement;
+        const proof = document.createElement("p");
+        proof.className = "findings__proof";
+        proof.textContent = item.proof;
+        li.append(statement, proof);
+        list.append(li);
+      }
+    }
+
+    function renderUnsettled(id: string, items: Unsettled[] | undefined, empty: string): void {
+      renderFindings(
+        id,
+        items?.map((u) => ({ statement: `We could not settle ${u.question}.`, proof: u.reason, source: "" })),
+        empty
+      );
+    }
+
+    function renderLines(id: string, values: string[]): void {
+      const list = $<HTMLUListElement>(id);
+      list.replaceChildren();
+      for (const value of values) {
+        const li = document.createElement("li");
+        li.textContent = value;
+        list.append(li);
+      }
+    }
+
     function renderFailure(message: string, offerHumanPath: boolean): void {
       setText("failure-message", message);
       $("failure-human-path").hidden = !offerHumanPath;
@@ -275,17 +352,34 @@ const apiOrigin = SNAPSHOT_API_ORIGIN;
             })} · based on publicly observable evidence`
           );
           $("result-mock").hidden = payload.mockMode !== true;
-          setText("result-constraint", s.primaryConstraint);
-          setText("result-why", s.whyWeThinkThis);
-          setText("result-well", s.whatIsGoingWell);
-          setText("result-help", s.howFixingItWillHelp);
-          setText("result-next", s.nextSteps);
-          setText("result-confidence", s.confidencePlainLanguage);
+          setText("result-business-read", s.businessRead);
+
+          renderFindings("result-signals", s.whatWeCanSee, EMPTY.signals);
+          renderFindings("result-strengths", s.whatIsWorking, EMPTY.strengths);
+          renderUnsettled("result-unsettled", s.whatWeCouldNotSettle, EMPTY.unsettled);
+
+          setText("result-confidence", s.evidenceConfidence);
+
+          const r = s.evidenceReceipt;
+          const pages = r?.pagesInspectedCount ?? 0;
+          setText(
+            "result-receipt-summary",
+            pages
+              ? `We read ${pages} of your published page${pages === 1 ? "" : "s"} and looked at ` +
+                  `${r.signalsChecked} thing${r.signalsChecked === 1 ? "" : "s"}, of which ${r.signalsSettled} settled.`
+              : "No published page could be read on this run."
+          );
+          renderLines("result-pages", r?.pagesInspected ?? []);
+          renderLines("result-limitations", r?.limitations ?? []);
+
+          setText("result-boundary", s.boundaryNote);
           show(result);
           $("result-heading").focus();
+          // No property derived from the result's content: the event records
+          // that a run finished and roughly how long it took, nothing about
+          // what was found or about the business it was found on.
           track(SNAPSHOT_COMPLETED, {
             durationBucket: durationBucket(performance.now() - startedAt),
-            gated: s.verificationRequired === true,
           });
         },
         onFailure(f) {
@@ -375,14 +469,17 @@ const apiOrigin = SNAPSHOT_API_ORIGIN;
     font-size: clamp(1.3rem, 3vw, 1.75rem);
   }
 
-  .result__constraint {
+  /* The business read: identity, not a finding. It keeps the gold rule the
+     constraint blockquote used to carry, because the position in the page is
+     the same — what changed is that the sentence no longer makes a claim. */
+  .result__read {
     margin: 0;
     padding-block: 1.25rem;
     border-top: 1px solid var(--gold-fill);
     border-bottom: 1px solid var(--rule);
   }
 
-  .result__constraint p {
+  .result__read p {
     font-family: var(--font-display);
     font-size: clamp(1.1rem, 2.4vw, 1.35rem);
     line-height: 1.45;
@@ -394,10 +491,68 @@ const apiOrigin = SNAPSHOT_API_ORIGIN;
     gap: 0.35rem;
   }
 
+  .findings {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.9rem;
+  }
+
+  .findings li {
+    display: grid;
+    gap: 0.2rem;
+  }
+
+  .findings__statement {
+    margin: 0;
+  }
+
+  /* The receipt for the statement above it. Quieter on purpose: it is there to
+     be checked, not to read as a second finding. */
+  .findings__proof {
+    margin: 0;
+    font-size: 0.88rem;
+    line-height: 1.55;
+    color: var(--slate);
+  }
+
+  .findings__empty {
+    color: var(--slate);
+  }
+
+  .receipt {
+    list-style: none;
+    margin: 0.4rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.85rem;
+    color: var(--slate);
+    overflow-wrap: anywhere;
+  }
+
+  .receipt--muted {
+    margin-block-start: 0.75rem;
+    color: var(--ink-2);
+    opacity: 0.75;
+  }
+
   .result__confidence {
     font-style: italic;
     color: var(--slate);
     font-size: 0.9rem;
+    margin: 0;
+  }
+
+  /* The product boundary, carried in the payload and restated at the end of the
+     result rather than only in the page copy above the form. */
+  .result__boundary {
+    margin: 0;
+    padding-block-start: 1rem;
+    border-top: 1px solid var(--rule);
+    font-size: 0.88rem;
+    color: var(--slate);
   }
 
   .handoff {

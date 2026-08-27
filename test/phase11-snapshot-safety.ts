@@ -62,13 +62,23 @@ console.log("=== Case 1: gated constraint is not presented as fact ===");
   // nothing occurred.
   check("leads with the review having happened", /^We reviewed your public pages/i.test(snap.primaryConstraint));
   check("credits what was gathered", /gathered enough/i.test(snap.primaryConstraint));
-  check("names the limit as needing visual confirmation", /visual confirmation/i.test(snap.primaryConstraint));
-  check("does not assert a finding", /before we would responsibly name it/i.test(snap.primaryConstraint));
+  check("names the limit as needing the live page", /needs a look at the live page/i.test(snap.primaryConstraint));
+  check("does not assert a finding", /before we would state anything about it/i.test(snap.primaryConstraint));
   check("explains why, without blaming the site", /only appears once a page is fully open/i.test(snap.whyWeThinkThis));
   check("offers a concrete route forward", /strategy call/i.test(snap.nextSteps));
   check("confidence reads as a held position, not a failure", /rather flag this/i.test(snap.confidencePlainLanguage));
   check("does not sound like the system failed", !/(could not|unable|failed|error|sorry)/i.test(snap.primaryConstraint));
   check("flagged for internal observability", snap.verificationRequired === true);
+
+  // Observation-boundary pass. This copy is now INTERNAL — the public payload
+  // is built by src/projection/public-snapshot.ts and never reaches Contract 5
+  // — but it previously promised twice to "name it as your main constraint"
+  // and "name your constraint with confidence". Copy that promises the
+  // judgement act is one refactor away from a public surface, so the promise
+  // was removed rather than relied on to stay unrendered.
+  check("no longer promises to name a main constraint", !/main constraint/i.test(all));
+  check("no longer promises to name YOUR constraint", !/name (your|the) constraint/i.test(all));
+  check("makes no constraint promise of any kind", !/constraint/i.test(all));
 }
 
 console.log("\n=== Case 2: safe constraint still renders normally ===");

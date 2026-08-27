@@ -1,9 +1,17 @@
 // Transactional email: sends the Growth Snapshot after opt-in, plus an honest,
-// non-overselling description of the two future paid tiers. Provider: Resend
-// (plain REST call — no SDK dependency). Email is persistence, never a gate:
-// the Snapshot was already shown before this is ever called.
+// non-overselling description of the paid tiers. Provider: Resend (plain REST
+// call — no SDK dependency). Email is persistence, never a gate: the Snapshot
+// was already shown before this is ever called.
+//
+// Observation-boundary pass: this renders the PUBLIC projection. It used to
+// render the internal GrowthSnapshot, leading with a Primary Constraint, and
+// its tier copy claimed the free Snapshot "identifies the single biggest
+// constraint we could find" — a judgement claim on the one public surface that
+// no site copy reaches. This module can no longer import GrowthSnapshot; it has
+// no way to know what a constraint is.
 
-import type { GrowthSnapshot } from "./types.js";
+import { BOUNDARY_NOTE, EMPTY_STATE } from "./projection/public-snapshot.js";
+import type { PublicSignal, PublicSnapshot, PublicUnsettled } from "./types.js";
 
 export class EmailNotConfiguredError extends Error {
   constructor() {
@@ -40,39 +48,84 @@ function section(label: string, body: string): string {
   <tr><td style="padding:0 0 28px;border-top:1px solid ${HAIRLINE};font-size:0;line-height:0">&nbsp;</td></tr>`;
 }
 
+// One observation: what we saw, then the counted detail behind it. The proof
+// line is deliberately quieter than the statement — it is a receipt, not a
+// second finding, and it must not read as a stacked list of complaints.
+function signalRow(s: PublicSignal): string {
+  return `<tr><td style="padding:0 0 16px">
+    <div style="font-family:${SANS};font-size:15px;line-height:1.7;color:${INK}">${esc(s.statement)}</div>
+    <div style="font-family:${SANS};font-size:13px;line-height:1.6;color:${SLATE};margin-top:4px">${esc(s.proof)}</div>
+  </td></tr>`;
+}
+
+function unsettledRow(u: PublicUnsettled): string {
+  return `<tr><td style="padding:0 0 16px">
+    <div style="font-family:${SANS};font-size:15px;line-height:1.7;color:${INK}">We could not settle ${esc(u.question)}.</div>
+    <div style="font-family:${SANS};font-size:13px;line-height:1.6;color:${SLATE};margin-top:4px">${esc(u.reason)}</div>
+  </td></tr>`;
+}
+
+function listSection(label: string, rows: string[], emptyCopy: string): string {
+  const body = rows.length
+    ? rows.join("")
+    : `<tr><td style="padding:0 0 16px"><div style="font-family:${SANS};font-size:15px;line-height:1.7;color:${INK}">${esc(
+        emptyCopy
+      )}</div></td></tr>`;
+  return `<tr><td style="padding:0 0 12px">
+    <div style="font-family:${SANS};font-size:13px;font-weight:600;color:${SLATE};margin:0 0 10px">${esc(label)}</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${body}</table>
+  </td></tr>
+  <tr><td style="padding:0 0 24px;border-top:1px solid ${HAIRLINE};font-size:0;line-height:0">&nbsp;</td></tr>`;
+}
+
 // Tier descriptions follow Product Council guidance: invite, never oversell,
 // never promise content that does not exist yet, never gate anything.
+//
+// Rewritten in the observation-boundary pass. The previous copy told the reader
+// the free Snapshot "identifies the single biggest constraint", described the
+// Blueprint as a prioritised plan answering "what to do first, second, third",
+// and said neither paid tier was available to order — three statements the
+// current ladder contradicts. Availability wording now states only what is
+// ratified: the Report is open by enquiry while DRDS works with a limited
+// number of early clients, and the Blueprint is conditional on a Report showing
+// it is warranted. No price, no date, no capacity figure is invented here.
 const TIER_COPY = `
   <tr><td style="padding:8px 0 8px">
     <div style="font-family:${SANS};font-size:13px;font-weight:600;color:${SLATE};margin:0 0 12px">Where this can go next</div>
     <div style="font-family:${SANS};font-size:14px;line-height:1.7;color:${INK}">
-      Your Growth Snapshot identifies the single biggest constraint we could find from
-      publicly observable evidence. Two deeper pathways are being prepared:
+      Your Growth Snapshot states what your public pages show. Deciding which of it
+      matters most is a different kind of work:
     </div>
   </td></tr>
   <tr><td style="padding:0 0 12px">
     <div style="font-family:${SANS};font-size:14px;line-height:1.7;color:${INK}">
-      <strong>Growth Report</strong> &mdash; a deeper look at this same constraint: the full
-      reasoning behind it, what it is likely costing you, and what category of action
-      addresses it. Still based on public evidence, no access needed.
+      <strong>Growth Report</strong> &mdash; the judgement layer. A human diagnosis of the
+      constraint actually limiting your growth, the constraints connected to it, and the
+      order in which they should be addressed &mdash; with an Owner Report, a Practitioner
+      Brief and a walkthrough.
     </div>
   </td></tr>
   <tr><td style="padding:0 0 20px">
     <div style="font-family:${SANS};font-size:14px;line-height:1.7;color:${INK}">
-      <strong>Growth Blueprint</strong> &mdash; a complete, prioritised growth plan across
-      multiple constraints, built with evidence you grant access to (such as your
-      analytics), answering what to do first, second, third &mdash; and why.
+      <strong>Growth Blueprint</strong> &mdash; a deeper investigation, undertaken only where
+      a Growth Report shows it is warranted. It is never the default next step.
     </div>
   </td></tr>
   <tr><td style="padding:0 0 8px">
     <div style="font-family:${SANS};font-size:14px;line-height:1.7;color:${SLATE}">
-      Neither is available to order yet. If you would like to be first in line when the
-      Growth Report opens, just reply to this email and say so.
+      The Growth Report is available by enquiry while DRDS works with a limited number of
+      early clients. If you would like to talk it through, just reply to this email.
     </div>
   </td></tr>`;
 
-export function renderSnapshotEmailHtml(businessName: string, s: GrowthSnapshot): string {
+export function renderSnapshotEmailHtml(businessName: string, s: PublicSnapshot): string {
   const preparedDate = new Date().toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" });
+  const r = s.evidenceReceipt;
+  const pagesLine = r.pagesInspectedCount
+    ? `We read ${r.pagesInspectedCount} of your published page${r.pagesInspectedCount === 1 ? "" : "s"} ` +
+      `and looked at ${r.signalsChecked} thing${r.signalsChecked === 1 ? "" : "s"}, of which ${r.signalsSettled} settled.`
+    : "No published page could be read on this run.";
+
   return `<!doctype html>
 <html>
 <body style="margin:0;padding:0;background:${PAPER}">
@@ -92,22 +145,39 @@ export function renderSnapshotEmailHtml(businessName: string, s: GrowthSnapshot)
         <tr><td style="padding:0 44px 32px">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid ${GOLD};border-bottom:1px solid ${HAIRLINE}">
             <tr><td style="padding:22px 0">
-              <div style="font-family:${SERIF};font-size:19px;line-height:1.55;color:${INK}">${esc(s.primaryConstraint)}</div>
+              <div style="font-family:${SERIF};font-size:19px;line-height:1.55;color:${INK}">${esc(s.businessRead)}</div>
             </td></tr>
           </table>
         </td></tr>
 
         <tr><td style="padding:0 44px">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-            ${section("What is going well", s.whatIsGoingWell)}
-            ${section("Why we think this", s.whyWeThinkThis)}
-            ${section("What changes if this is fixed", s.howFixingItWillHelp)}
-            ${section("Next steps", s.nextSteps)}
+            ${listSection("What we can see", s.whatWeCanSee.map(signalRow), EMPTY_STATE.whatWeCanSee)}
+            ${listSection("What is working", s.whatIsWorking.map(signalRow), EMPTY_STATE.whatIsWorking)}
+            ${listSection(
+              "What we could not settle",
+              s.whatWeCouldNotSettle.map(unsettledRow),
+              EMPTY_STATE.whatWeCouldNotSettle
+            )}
+            ${section("How confident we are in this evidence", s.evidenceConfidence)}
           </table>
         </td></tr>
 
+        <tr><td style="padding:0 44px 28px">
+          <div style="font-family:${SANS};font-size:13px;font-weight:600;color:${SLATE};margin:0 0 8px">What we looked at</div>
+          <div style="font-family:${SANS};font-size:14px;line-height:1.7;color:${INK}">${esc(pagesLine)}</div>
+          <div style="font-family:${SANS};font-size:13px;line-height:1.6;color:${SLATE};margin-top:8px">
+            ${r.pagesInspected.map((u) => esc(u)).join("<br>")}
+          </div>
+          <div style="font-family:${SANS};font-size:12px;line-height:1.6;color:${MUTED};margin-top:12px">
+            ${r.limitations.map((l) => esc(l)).join("<br>")}
+          </div>
+        </td></tr>
+
         <tr><td style="padding:0 44px 32px">
-          <div style="font-family:${SANS};font-size:13px;line-height:1.6;color:${SLATE};font-style:italic">${esc(s.confidencePlainLanguage)}</div>
+          <div style="font-family:${SANS};font-size:13px;line-height:1.6;color:${SLATE};font-style:italic">${esc(
+            s.boundaryNote || BOUNDARY_NOTE
+          )}</div>
         </td></tr>
 
         <tr><td style="padding:0 44px 8px;border-top:1px solid ${HAIRLINE}">
@@ -132,7 +202,7 @@ export function renderSnapshotEmailHtml(businessName: string, s: GrowthSnapshot)
 export async function sendSnapshotEmail(
   to: string,
   businessName: string,
-  snapshot: GrowthSnapshot
+  snapshot: PublicSnapshot
 ): Promise<{ provider: string; id?: string }> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new EmailNotConfiguredError();

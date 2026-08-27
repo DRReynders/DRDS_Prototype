@@ -56,18 +56,41 @@ function wasAttempted(s: ResultStatus): boolean {
   return isUsable(s) || ATTEMPTED_UNRESOLVED.includes(s);
 }
 
+export interface CoverageCounts {
+  total: number;
+  usable: number;
+  indeterminate: number;
+  awaitingBrowser: number;
+  notAssessed: number;
+  label: "Substantial" | "Partial" | "Thin";
+}
+
+// The same counts aggregateCoverage has always computed, exposed as structure.
+//
+// Added for the public Snapshot projection, which needs the coverage LABEL and
+// the settled/checked counts without re-parsing the prose sentence below. The
+// prose is written for the reasoning layer and its wording is not a contract;
+// these numbers are. aggregateCoverage now reads from here, so the two can
+// never drift apart.
+export function coverageCounts(entries: EvidenceEntry[]): CoverageCounts {
+  const total = entries.length;
+  const usable = entries.filter((e) => isUsable(e.resultStatus)).length;
+  return {
+    total,
+    usable,
+    indeterminate: entries.filter((e) => e.resultStatus === "Indeterminate").length,
+    awaitingBrowser: entries.filter((e) => e.resultStatus === "Requires Browser Confirmation").length,
+    notAssessed: entries.filter(
+      (e) => e.resultStatus === "Not Assessed" || e.resultStatus === "Not Applicable"
+    ).length,
+    label: usable >= total * 0.75 ? "Substantial" : usable >= total * 0.4 ? "Partial" : "Thin",
+  };
+}
+
 // Exported so Patch 001.2 can test coverage semantics directly against fixture
 // entries, with no pipeline run and no LLM call.
 export function aggregateCoverage(entries: EvidenceEntry[]): string {
-  const total = entries.length;
-  const usable = entries.filter((e) => isUsable(e.resultStatus)).length;
-  const indeterminate = entries.filter((e) => e.resultStatus === "Indeterminate").length;
-  const awaitingBrowser = entries.filter((e) => e.resultStatus === "Requires Browser Confirmation").length;
-  const notAssessed = entries.filter(
-    (e) => e.resultStatus === "Not Assessed" || e.resultStatus === "Not Applicable"
-  ).length;
-
-  const label = usable >= total * 0.75 ? "Substantial" : usable >= total * 0.4 ? "Partial" : "Thin";
+  const { total, usable, indeterminate, awaitingBrowser, notAssessed, label } = coverageCounts(entries);
 
   const unresolvedParts: string[] = [];
   if (indeterminate) unresolvedParts.push(`${indeterminate} indeterminate (checked, did not conclude)`);

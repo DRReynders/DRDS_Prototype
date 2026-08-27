@@ -113,6 +113,18 @@ export interface GoalModel {
 export type EvidenceClaimType = "presence" | "absence" | "mixed";
 
 // Contract 3 — Evidence
+// Public Snapshot projection support (Stage 1 of the observation boundary).
+//
+// The counted quantities a mechanical check already computed on its way to a
+// Result Status. They exist so the public projection can compose owner-facing
+// sentences from NUMBERS rather than by re-parsing the internal evidenceValue
+// prose, which is written for the reasoning layer and carries its vocabulary.
+//
+// Numbers only, deliberately: a number cannot smuggle internal wording, a URL,
+// or a model-authored phrase into public copy. Where a public sentence needs a
+// place, it uses `source`, which is already a plain URL list.
+export type EvidenceFacts = Readonly<Record<string, number>>;
+
 export interface EvidenceEntry {
   evidenceId: string;
   growthFunction: string;
@@ -125,6 +137,10 @@ export interface EvidenceEntry {
   // Optional and additive: entries produced before this patch, and every
   // LLM-authored entry, leave it undefined and keep the previous behaviour.
   claimType?: EvidenceClaimType;
+  // Optional and additive, same pattern. Populated by the mechanical checks
+  // only — an LLM-authored entry has no counted facts to report, and the
+  // projection falls back to status-driven wording for those.
+  facts?: EvidenceFacts;
 }
 
 export interface EvidencePackage {
@@ -168,8 +184,100 @@ export interface GrowthSnapshot {
   confidencePlainLanguage: string; // never a number, percentage, or technical term
   // Phase 1.1: true when Contract 4 gated the constraint and this Snapshot is
   // the fixed "could not confirm" copy rather than a model-written finding.
-  // Additive and optional — the web UI and email read named fields only.
+  // Additive and optional — internal readers read named fields only.
   verificationRequired?: boolean;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUBLIC SNAPSHOT PROJECTION — the free product's entire public contract.
+//
+// Product Council boundary, ratified:
+//
+//   The Growth Snapshot may state what is observably true.
+//   Only the Growth Report may state what matters most.
+//
+// GrowthSnapshot above is now INTERNAL. It is the Contract 5 output, it stays
+// in the run log, and the Growth Report assembler still reads it. It is no
+// longer what a stranger receives.
+//
+// This projection is what a stranger receives. It is built only from Contract
+// 0-3 output and factual run metadata (see src/projection/public-snapshot.ts).
+// Every field below is observation-safe by construction:
+//
+//   · nothing here names a main, primary, single or biggest constraint;
+//   · nothing here ranks two findings against each other;
+//   · nothing here claims that fixing X produces outcome Y;
+//   · nothing here prescribes an order of work or where to invest.
+//
+// The boundary is enforced by the BUILDER'S INPUT TYPE, not by wording. A later
+// maintainer cannot leak a constraint by editing frontend copy, because no
+// constraint ever reaches this object.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One thing the published pages actually showed, with the counted detail that
+ *  proves it and the pages it was read from.
+ *
+ *  `statement` is WHAT WE CAN SEE. `proof` is WHY WE THINK THIS. Neither may
+ *  say that this observation matters more than any other, and neither may
+ *  assert a consequence of acting on it. */
+export interface PublicSignal {
+  /** Owner-facing, plain language. Describes the site, never its importance. */
+  statement: string;
+  /** The counted, checkable detail behind the statement. */
+  proof: string;
+  /** The page(s) it was read from — the receipt for this one line. */
+  source: string;
+  /** Evidence Library id. Carried for internal traceability and for tests; the
+   *  public surfaces never render it. */
+  evidenceId: string;
+}
+
+/** A question the published pages could not responsibly answer, and why not.
+ *
+ *  `reason` always describes a limit of OUR method or access. It is never a
+ *  defect of the website: "we could not see it" and "it is not there" are
+ *  different findings and this product must not blur them. */
+export interface PublicUnsettled {
+  question: string;
+  reason: string;
+}
+
+/** Proof the inspection genuinely happened, in checkable facts. */
+export interface PublicReceipt {
+  /** Final URLs actually fetched and read. */
+  pagesInspected: string[];
+  pagesInspectedCount: number;
+  /** How many checks ran, and how many reached a conclusion. A count of
+   *  activity and of certainty — never a score, and never a grade. */
+  signalsChecked: number;
+  signalsSettled: number;
+  /** Pages we did NOT read because robots.txt asked us not to. Declaring them
+   *  is the honest half of honouring the file. */
+  notInspected: string[];
+  /** Fixed, factual statements of what this method cannot see. */
+  limitations: string[];
+}
+
+export interface PublicSnapshot {
+  /** How the business presents itself, from its own pages. Identity only —
+   *  never an assessment of the business. */
+  businessRead: string;
+  /** Observation-safe signals. Order is presentational and fixed by the
+   *  Evidence Library's own declaration order; it carries no severity. */
+  whatWeCanSee: PublicSignal[];
+  /** Genuine visible strengths, held in a separate list so praise can never be
+   *  inferred from the absence of a gap, or vice versa. */
+  whatIsWorking: PublicSignal[];
+  /** What public evidence cannot settle. */
+  whatWeCouldNotSettle: PublicUnsettled[];
+  /** Confidence in the EVIDENCE and its coverage. Explicitly NOT confidence in
+   *  a selected constraint, because this product selects none. */
+  evidenceConfidence: string;
+  evidenceReceipt: PublicReceipt;
+  /** Fixed, reviewed statement of what the free product does and does not do.
+   *  Present in the payload rather than only in site copy, so every surface
+   *  that renders a Snapshot carries the boundary with it. */
+  boundaryNote: string;
 }
 
 // Markers in the static HTML that indicate content a direct fetch cannot see.
@@ -414,7 +522,13 @@ export interface RunLog {
   cip?: ClientIdentificationPacket;
   goalModel?: GoalModel;
   evidencePackage?: EvidencePackage;
+  // What the visitor actually received. Built from the evidence layer alone and
+  // recorded BEFORE the reasoning stages run, so the run log shows the public
+  // product and the internal hypothesis as two separate, comparable things.
+  publicSnapshot?: PublicSnapshot;
   reasoningResult?: ReasoningResult;
+  // Internal only since the observation-boundary pass: Contract 5's output.
+  // Still written, still read by the Growth Report assembler, never published.
   growthSnapshot?: GrowthSnapshot;
   escalationTrace?: {
     attempted: boolean;
