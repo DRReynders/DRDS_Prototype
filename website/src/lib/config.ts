@@ -9,7 +9,16 @@
 // a missing production value fails the build with an actionable message rather
 // than shipping a site whose Snapshot silently does nothing.
 
-const RAW = import.meta.env.PUBLIC_SNAPSHOT_API_ORIGIN;
+// Vite always supplies `import.meta.env`; plain Node does not. Reading it
+// defensively lets an offline test import this module — and therefore import
+// snapshot-client.ts, which depends on it — to exercise the real streaming and
+// recovery logic outside a browser. Production behaviour is unchanged: under
+// Vite the first branch always wins.
+const ENV: Record<string, unknown> =
+  (import.meta as unknown as { env?: Record<string, unknown> }).env ??
+  (typeof process !== "undefined" ? (process.env as unknown as Record<string, unknown>) : {});
+
+const RAW = ENV.PUBLIC_SNAPSHOT_API_ORIGIN;
 
 // `npm run dev` against a locally running backend should not require a .env
 // first. A production build must be explicit.
@@ -19,6 +28,12 @@ function resolveOrigin(): string {
   const value = typeof RAW === "string" ? RAW.trim().replace(/\/+$/, "") : "";
 
   if (!value) {
+    // `import.meta.env.DEV` verbatim, NOT a dynamic read: Vite replaces this
+    // exact expression with `false` in a production build and then eliminates
+    // this whole branch, which is what keeps the localhost fallback out of the
+    // shipped bundle. Reading it through a variable defeats that and ships a
+    // dev-only URL to real visitors. Only reached when no origin is configured
+    // at all, which the build refuses below anyway.
     if (import.meta.env.DEV) {
       console.warn(
         `[drds] PUBLIC_SNAPSHOT_API_ORIGIN is not set — falling back to ${DEV_FALLBACK} for local development. ` +

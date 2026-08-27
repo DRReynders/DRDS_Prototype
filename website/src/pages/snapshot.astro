@@ -107,6 +107,11 @@ const apiOrigin = SNAPSHOT_API_ORIGIN;
         <!-- Each milestone is announced as it genuinely occurs, so a screen
              reader user knows work is progressing without watching the page. -->
         <ul id="milestones" class="milestones" aria-live="polite" aria-atomic="false"></ul>
+        <!-- Stage 1.2. Shown only if the connection drops and we go looking for
+             the completed run. It must never read as a new analysis: the
+             Snapshot was computed once and we are collecting it, not redoing
+             it. No percentage, no countdown, no invented progress. -->
+        <p id="recovery-note" class="notice" data-tone="info" role="status" hidden></p>
       </div>
     </section>
 
@@ -212,7 +217,7 @@ const apiOrigin = SNAPSHOT_API_ORIGIN;
     before it runs, and every state container already exists in the document.
   -->
   <script>
-    import { runSnapshot } from "../lib/snapshot-client";
+    import { runSnapshot, recoverRun } from "../lib/snapshot-client";
     import {
       durationBucket,
       track,
@@ -314,6 +319,157 @@ const apiOrigin = SNAPSHOT_API_ORIGIN;
 
     let running = false;
 
+    // ── Stage 1.2: bounded recovery context ─────────────────────────────────
+    //
+    // A refresh or an accidental back-navigation mid-run should not throw away
+    // the only handle on a Snapshot that has already been paid for. Only the
+    // run id and a timestamp are kept — never the Snapshot itself, never the
+    // submitted URL, never anything about the visitor.
+    //
+    // sessionStorage, not localStorage: it survives reload and navigation
+    // within the tab, which is the case we are protecting, and disappears when
+    // the tab closes, which is the right lifetime for a handle to one run. A
+    // run is unrecoverable long before a new tab would ever want it, so
+    // localStorage would only lengthen how long we store something useless.
+    // Every access is wrapped — storage throws outright in some privacy modes.
+    const PENDING_KEY = "drds.pendingRunId";
+    const PENDING_MAX_AGE_MS = 30 * 60 * 1000;
+
+    function rememberRun(id: string): void {
+      try {
+        sessionStorage.setItem(PENDING_KEY, JSON.stringify({ runId: id, at: Date.now() }));
+      } catch {
+        /* storage unavailable — recovery still works within this page view */
+      }
+    }
+
+    function forgetRun(): void {
+      try {
+        sessionStorage.removeItem(PENDING_KEY);
+      } catch {
+        /* nothing to clean up */
+      }
+    }
+
+    function recallRun(): string | null {
+      try {
+        const raw = sessionStorage.getItem(PENDING_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { runId?: unknown; at?: unknown };
+        if (typeof parsed.runId !== "string" || typeof parsed.at !== "number") return null;
+        if (Date.now() - parsed.at > PENDING_MAX_AGE_MS) {
+          forgetRun();
+          return null;
+        }
+        return parsed.runId;
+      } catch {
+        return null;
+      }
+    }
+
+    function showRecovering(attempt: number, attempts: number): void {
+      const note = $("recovery-note");
+      note.textContent =
+        `The connection was interrupted. Checking for your completed Growth Snapshot ` +
+        `(${attempt} of ${attempts})…`;
+      note.hidden = false;
+      show(waiting);
+    }
+
+    // One set of handlers, used by a live run and by a recovery attempt alike —
+    // so a recovered Snapshot renders through exactly the same code path as a
+    // streamed one, and cannot drift from it.
+    const handlers = {
+      onMilestone(label: string) {
+        const item = document.createElement("li");
+        item.textContent = label;
+        milestones.append(item);
+      },
+      onRunId(id: string) {
+        rememberRun(id);
+      },
+      onRecovering(attempt: number, attempts: number) {
+        showRecovering(attempt, attempts);
+      },
+      onResult(payload: Parameters<typeof renderResult>[0]) {
+        forgetRun();
+        renderResult(payload);
+      },
+      onFailure(f: { message: string; offerHumanPath: boolean; state: string }) {
+        forgetRun();
+        $("recovery-note").hidden = true;
+        renderFailure(f.message, f.offerHumanPath);
+        track(SNAPSHOT_FAILED, { state: f.state });
+      },
+    };
+
+    let startedAt = 0;
+
+    // Renders a completed Snapshot. Deliberately shared: a Snapshot that
+    // arrived over the live stream and one collected afterwards by recovery are
+    // the same product and must render through the same code.
+    function renderResult(payload: {
+      businessName?: string;
+      mockMode?: boolean;
+      snapshot: {
+        businessRead: string;
+        whatWeCanSee: Signal[];
+        whatIsWorking: Signal[];
+        whatWeCouldNotSettle: Unsettled[];
+        evidenceConfidence: string;
+        evidenceReceipt?: {
+          pagesInspected?: string[];
+          pagesInspectedCount?: number;
+          signalsChecked?: number;
+          signalsSettled?: number;
+          limitations?: string[];
+        };
+        boundaryNote: string;
+      };
+    }): void {
+      const s = payload.snapshot;
+      $("recovery-note").hidden = true;
+      setText("result-heading", payload.businessName || "Your business");
+      setText(
+        "result-prepared",
+        `Prepared ${new Date().toLocaleDateString("en-ZA", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        })} · based on publicly observable evidence`
+      );
+      $("result-mock").hidden = payload.mockMode !== true;
+      setText("result-business-read", s.businessRead);
+
+      renderFindings("result-signals", s.whatWeCanSee, EMPTY.signals);
+      renderFindings("result-strengths", s.whatIsWorking, EMPTY.strengths);
+      renderUnsettled("result-unsettled", s.whatWeCouldNotSettle, EMPTY.unsettled);
+
+      setText("result-confidence", s.evidenceConfidence);
+
+      const r = s.evidenceReceipt;
+      const pages = r?.pagesInspectedCount ?? 0;
+      setText(
+        "result-receipt-summary",
+        pages
+          ? `We read ${pages} of your published page${pages === 1 ? "" : "s"} and looked at ` +
+              `${r?.signalsChecked} thing${r?.signalsChecked === 1 ? "" : "s"}, of which ${r?.signalsSettled} settled.`
+          : "No published page could be read on this run."
+      );
+      renderLines("result-pages", r?.pagesInspected ?? []);
+      renderLines("result-limitations", r?.limitations ?? []);
+
+      setText("result-boundary", s.boundaryNote);
+      show(result);
+      $("result-heading").focus();
+      // No property derived from the result's content: the event records that a
+      // run finished and roughly how long it took, nothing about what was found
+      // or about the business it was found on.
+      track(SNAPSHOT_COMPLETED, {
+        durationBucket: durationBucket(performance.now() - startedAt),
+      });
+    }
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (running) return;
@@ -329,69 +485,38 @@ const apiOrigin = SNAPSHOT_API_ORIGIN;
       submit.disabled = true;
       form.setAttribute("aria-busy", "true");
       milestones.replaceChildren();
+      $("recovery-note").hidden = true;
       show(waiting);
       // No business URL is ever sent as an analytics property.
       track(SNAPSHOT_STARTED, { entry: "snapshot_page" });
-      const startedAt = performance.now();
+      startedAt = performance.now();
 
-      await runSnapshot(url, {
-        onMilestone(label) {
-          const item = document.createElement("li");
-          item.textContent = label;
-          milestones.append(item);
-        },
-        onResult(payload) {
-          const s = payload.snapshot;
-          setText("result-heading", payload.businessName || "Your business");
-          setText(
-            "result-prepared",
-            `Prepared ${new Date().toLocaleDateString("en-ZA", {
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            })} · based on publicly observable evidence`
-          );
-          $("result-mock").hidden = payload.mockMode !== true;
-          setText("result-business-read", s.businessRead);
-
-          renderFindings("result-signals", s.whatWeCanSee, EMPTY.signals);
-          renderFindings("result-strengths", s.whatIsWorking, EMPTY.strengths);
-          renderUnsettled("result-unsettled", s.whatWeCouldNotSettle, EMPTY.unsettled);
-
-          setText("result-confidence", s.evidenceConfidence);
-
-          const r = s.evidenceReceipt;
-          const pages = r?.pagesInspectedCount ?? 0;
-          setText(
-            "result-receipt-summary",
-            pages
-              ? `We read ${pages} of your published page${pages === 1 ? "" : "s"} and looked at ` +
-                  `${r.signalsChecked} thing${r.signalsChecked === 1 ? "" : "s"}, of which ${r.signalsSettled} settled.`
-              : "No published page could be read on this run."
-          );
-          renderLines("result-pages", r?.pagesInspected ?? []);
-          renderLines("result-limitations", r?.limitations ?? []);
-
-          setText("result-boundary", s.boundaryNote);
-          show(result);
-          $("result-heading").focus();
-          // No property derived from the result's content: the event records
-          // that a run finished and roughly how long it took, nothing about
-          // what was found or about the business it was found on.
-          track(SNAPSHOT_COMPLETED, {
-            durationBucket: durationBucket(performance.now() - startedAt),
-          });
-        },
-        onFailure(f) {
-          renderFailure(f.message, f.offerHumanPath);
-          track(SNAPSHOT_FAILED, { state: f.state });
-        },
-      });
+      // The ONLY call to /api/snapshot on this page, and it happens only here —
+      // behind a real submit, from a real click. Nothing in the recovery path
+      // can reach it, so a delivery failure can never start a second paid run.
+      await runSnapshot(url, handlers);
 
       running = false;
       submit.disabled = false;
       form.removeAttribute("aria-busy");
     });
+
+    // A run was in flight when this page was last loaded — a refresh, a back
+    // navigation, an accidental reload. Collect it rather than losing it. This
+    // calls recovery only; it never starts an analysis, so a reload can never
+    // cost anything.
+    const pending = recallRun();
+    if (pending) {
+      running = true;
+      submit.disabled = true;
+      milestones.replaceChildren();
+      showRecovering(1, 7);
+      startedAt = performance.now();
+      void recoverRun(pending, handlers).finally(() => {
+        running = false;
+        submit.disabled = false;
+      });
+    }
 
     $("failure-retry").addEventListener("click", () => {
       show(null);

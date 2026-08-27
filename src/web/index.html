@@ -150,6 +150,9 @@
   <div id="waiting" class="hidden">
     <p><span class="spinner"></span>Analysing your business — this usually takes a minute or two.</p>
     <ul id="milestones"></ul>
+    <!-- Shown only while collecting an already-completed run after a dropped
+         connection. Never says "rerunning" — nothing is being re-analysed. -->
+    <p id="recoveryNote" class="hidden"></p>
   </div>
 
   <div id="notice" class="notice hidden"></div>
@@ -227,28 +230,57 @@
         return;
       }
 
-      // Read the NDJSON stream: milestone lines as they genuinely happen,
-      // then one final result/error line.
+      // Read the NDJSON stream. Events are dispatched BY TYPE — an unrecognised
+      // line is ignored, never mistaken for the run's answer. That used to be
+      // the rule ("milestone, or else terminal"), and it made the stream
+      // unextendable: a heartbeat would have replaced every good result.
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       let final = null;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let nl;
-        while ((nl = buffer.indexOf("\n")) >= 0) {
-          const line = buffer.slice(0, nl).trim();
-          buffer = buffer.slice(nl + 1);
-          if (!line) continue;
-          const evt = JSON.parse(line);
-          if (evt.type === "milestone") addMilestone(evt.label);
-          else final = evt;
+      let streamBroke = false;
+
+      function consume(line) {
+        var trimmed = line.trim();
+        if (!trimmed) return;
+        var evt;
+        try { evt = JSON.parse(trimmed); } catch (e) { return; }
+        if (!evt || typeof evt !== "object") return;
+        if (evt.type === "run_started") {
+          if (typeof evt.runId === "string" && evt.runId) { runId = evt.runId; }
+          return;
         }
+        if (evt.type === "milestone") { addMilestone(evt.label); return; }
+        if (evt.type === "heartbeat") { return; }   // keepalive only, never shown
+        if (evt.type === "result" || evt.type === "error") { final = evt; return; }
+        return;                                     // unknown type — ignored
       }
 
-      if (!final) { showNotice("The connection was interrupted. Please try again."); return; }
+      // A transport error must NOT throw away a result already received. This
+      // is what lost the first live Snapshot: the product had arrived and the
+      // page reported failure over the top of it.
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let nl;
+          while ((nl = buffer.indexOf("\n")) >= 0) {
+            consume(buffer.slice(0, nl));
+            buffer = buffer.slice(nl + 1);
+          }
+        }
+        consume(buffer);
+      } catch (streamErr) {
+        streamBroke = true;
+      }
+
+      if (!final && streamBroke && runId) {
+        const recovered = await recoverRun(runId);
+        if (recovered) { final = recovered; }
+      }
+
+      if (!final) { showNotice("The connection was interrupted and we couldn't retrieve your completed Growth Snapshot."); return; }
       if (final.type === "error") { showNotice(final.message, final.state); return; }
 
       runId = final.runId;
@@ -291,6 +323,46 @@
       $("go").disabled = false;
     }
   });
+
+  // Stage 1.2 — collect an already-completed Snapshot whose delivery failed.
+  //
+  //   Retry delivery, never silently retry paid computation.
+  //
+  // Calls /api/recover and nothing else. /api/snapshot is unreachable from
+  // here, so no path through this function can start a second paid run.
+  const RECOVERY_DELAYS_MS = [2000, 5000, 10000, 20000, 30000, 45000, 60000];
+
+  async function recoverRun(id) {
+    for (let i = 0; i < RECOVERY_DELAYS_MS.length; i++) {
+      $("waiting").classList.remove("hidden");
+      $("recoveryNote").textContent =
+        "The connection was interrupted. Checking for your completed Growth Snapshot (" +
+        (i + 1) + " of " + RECOVERY_DELAYS_MS.length + ")…";
+      $("recoveryNote").classList.remove("hidden");
+      await new Promise(function (r) { setTimeout(r, RECOVERY_DELAYS_MS[i]); });
+
+      let body;
+      try {
+        const r = await fetch("/api/recover", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ runId: id }),
+        });
+        body = await r.json();
+      } catch (e) { continue; }
+
+      if (!body || typeof body !== "object") continue;
+      if (body.state === "pending") continue;        // still computing — wait
+      if (body.state === "recovered" && body.publicSnapshot) {
+        $("recoveryNote").classList.add("hidden");
+        return { type: "result", runId: body.runId, businessName: body.businessName,
+                 mockMode: body.mockMode, publicSnapshot: body.publicSnapshot };
+      }
+      if (body.state === "not_found" || body.state === "incomplete") break;
+    }
+    $("recoveryNote").classList.add("hidden");
+    return null;
+  }
 
   const EMPTY = {
     signals: "Nothing we looked at settled cleanly enough on this site for us to state it here.",

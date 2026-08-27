@@ -13,8 +13,8 @@
 // The site therefore cannot render one, whatever its copy says. That boundary
 // is the product boundary, and it lives in the payload rather than the wording.
 
-import { SNAPSHOT_API_ORIGIN } from "./config";
-import { sanitiseMilestone, toFailure, type SnapshotFailure } from "./snapshot-states";
+import { SNAPSHOT_API_ORIGIN } from "./config.js";
+import { sanitiseMilestone, toFailure, type SnapshotFailure } from "./snapshot-states.js";
 
 /** The PUBLIC Snapshot contract, mirroring the backend's PublicSnapshot.
  *
@@ -71,9 +71,27 @@ export interface SnapshotHandlers {
   onMilestone(label: string): void;
   onResult(result: SnapshotResult): void;
   onFailure(failure: SnapshotFailure): void;
+  /** The canonical run id, as soon as the server announces it. The page keeps
+   *  it so a later broken connection can collect the finished Snapshot. */
+  onRunId?(runId: string): void;
+  /** The connection dropped and we are asking for the completed run instead.
+   *  Never fired for a new analysis — this is retrieval, not computation. */
+  onRecovering?(attempt: number, attempts: number): void;
 }
 
 const SNAPSHOT_PATH = "/api/snapshot";
+const RECOVER_PATH = "/api/recover";
+
+// Stage 1.2 — bounded recovery schedule.
+//
+//   Retry delivery, never silently retry paid computation.
+//
+// If the stream breaks the run usually keeps going server-side, so recovery has
+// to outlast the rest of the pipeline: measured runs take 105-152s in total and
+// a break at the Contract 4 milestone leaves well over a minute to wait. These
+// seven delays span about 172 seconds, then stop. Fixed and deterministic —
+// no jitter, no exponential growth, no unbounded polling.
+const RECOVERY_DELAYS_MS = [2000, 5000, 10000, 20000, 30000, 45000, 60000] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -87,6 +105,88 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * or `{type:"error"}` line. There are no timers and no predicted stages — a
  * milestone appears because work reached that point.
  */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(t);
+      resolve();
+    }, { once: true });
+  });
+}
+
+/**
+ * Collect an already-completed Snapshot for a run whose delivery failed.
+ *
+ * THIS NEVER STARTS AN ANALYSIS. It only ever calls /api/recover, which reads a
+ * stored run and returns its public projection. `/api/snapshot` is not reachable
+ * from here, so no path through this function can spend money.
+ *
+ * Exported so a test can exercise the retry schedule directly.
+ */
+export async function recoverRun(
+  runId: string,
+  handlers: SnapshotHandlers,
+  signal?: AbortSignal
+): Promise<void> {
+  for (let attempt = 0; attempt < RECOVERY_DELAYS_MS.length; attempt++) {
+    if (signal?.aborted) return;
+    handlers.onRecovering?.(attempt + 1, RECOVERY_DELAYS_MS.length);
+    await sleep(RECOVERY_DELAYS_MS[attempt], signal);
+    if (signal?.aborted) return;
+
+    let response: Response;
+    try {
+      response = await fetch(`${SNAPSHOT_API_ORIGIN}${RECOVER_PATH}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId }),
+        signal,
+      });
+    } catch {
+      continue; // still unreachable — the schedule decides when to stop
+    }
+
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      continue;
+    }
+    if (!isRecord(body)) continue;
+
+    // 202 pending: the run is still being computed. Keep waiting — this is the
+    // case that makes patience correct rather than wasteful.
+    if (body.state === "pending") continue;
+
+    if (
+      response.ok &&
+      body.state === "recovered" &&
+      isRecord(body.publicSnapshot) &&
+      typeof body.runId === "string"
+    ) {
+      handlers.onResult({
+        runId: body.runId,
+        businessName: typeof body.businessName === "string" ? body.businessName : undefined,
+        snapshot: body.publicSnapshot as unknown as PublicSnapshot,
+        mockMode: body.mockMode === true,
+      });
+      return;
+    }
+
+    // A definite answer that is not a Snapshot — the run is not there, or it
+    // never completed. Retrying cannot change either, so stop honestly.
+    if (body.state === "not_found" || body.state === "incomplete") {
+      handlers.onFailure(toFailure("unrecoverable"));
+      return;
+    }
+  }
+
+  // The schedule ran out. Bounded, as designed: no further attempts, and
+  // still no second analysis.
+  handlers.onFailure(toFailure("recovery_exhausted"));
+}
+
 export async function runSnapshot(url: string, handlers: SnapshotHandlers, signal?: AbortSignal): Promise<void> {
   let response: Response;
   try {
@@ -126,6 +226,10 @@ export async function runSnapshot(url: string, handlers: SnapshotHandlers, signa
     return;
   }
 
+  // Learned from the run_started event, before any long processing. Without it
+  // a broken connection is unrecoverable, because there is nothing to ask for.
+  let runId: string | null = null;
+
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -134,6 +238,14 @@ export async function runSnapshot(url: string, handlers: SnapshotHandlers, signa
   // narrowed to its initial value at the read site below.
   const terminalEvents: Record<string, unknown>[] = [];
 
+  // Explicit dispatch by event type.
+  //
+  // This used to be "milestone, or else terminal", which meant ANY unrecognised
+  // line silently became the run's terminal answer. That made the stream
+  // unextendable: adding a heartbeat would have replaced every successful
+  // result with a generic failure. Unknown types are now ignored — the
+  // fail-safe direction, because a line we do not understand is not a result
+  // and must never be treated as one.
   const consume = (line: string): void => {
     const trimmed = line.trim();
     if (!trimmed) return;
@@ -144,14 +256,45 @@ export async function runSnapshot(url: string, handlers: SnapshotHandlers, signa
       return; // a partial or malformed line is skipped, never surfaced
     }
     if (!isRecord(event)) return;
-    if (event.type === "milestone") {
-      const label = sanitiseMilestone(event.label);
-      if (label) handlers.onMilestone(label);
-      return;
+
+    switch (event.type) {
+      case "run_started":
+        // Metadata only. Recorded so a broken connection is recoverable.
+        if (typeof event.runId === "string" && event.runId) {
+          runId = event.runId;
+          handlers.onRunId?.(event.runId);
+        }
+        return;
+      case "milestone": {
+        const label = sanitiseMilestone(event.label);
+        if (label) handlers.onMilestone(label);
+        return;
+      }
+      case "heartbeat":
+        // Transport keepalive. Deliberately invisible: it is not progress and
+        // must never be rendered as any.
+        return;
+      case "result":
+      case "error":
+        terminalEvents.push(event);
+        return;
+      default:
+        return; // unknown type — ignored, never terminal
     }
-    terminalEvents.push(event);
   };
 
+  // Stage 1.2 — TERMINAL-RESULT PRESERVATION.
+  //
+  // This catch used to `return` a failure, which threw away a fully received,
+  // fully parsed Snapshot if the stream errored on the way to closing. That is
+  // what lost the first live run: the product was in this array, and the client
+  // reported "temporarily unavailable" over the top of it.
+  //
+  // Now a transport error is recorded and execution falls through to the
+  // terminal-event evaluation below. A valid result always wins. If there is no
+  // result, the flag below decides between "the connection broke" and "the
+  // stream just ended with nothing in it" — still two different truths.
+  let streamBroke = false;
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -165,18 +308,23 @@ export async function runSnapshot(url: string, handlers: SnapshotHandlers, signa
     }
     consume(buffer);
   } catch {
-    // The connection dropped mid-run. Honest: we do not know whether the run
-    // finished, so nothing is claimed about it.
-    handlers.onFailure(toFailure("backend_unreachable"));
-    return;
+    streamBroke = true;
   }
 
   // The last terminal line wins; in practice the backend writes exactly one.
   const event = terminalEvents.at(-1);
   if (!event) {
-    // The stream ended without a result or an error. We do not know whether the
-    // run completed, so nothing is claimed about it.
-    handlers.onFailure(toFailure("error"));
+    // Nothing terminal arrived. If the connection broke, the run may still be
+    // completing on the server — so ask for that same run rather than starting
+    // a second paid one. Recovery is retrieval; it never re-analyses.
+    if (streamBroke && runId) {
+      await recoverRun(runId, handlers, signal);
+      return;
+    }
+    // The stream ended cleanly with no result, or broke before the server had
+    // even announced a run id. We do not know whether anything completed, so
+    // nothing is claimed about it.
+    handlers.onFailure(toFailure(streamBroke ? "backend_unreachable" : "error"));
     return;
   }
   if (event.type === "error") {

@@ -28,7 +28,18 @@ export interface PipelineOutcome {
 
 export type StageEvent = (message: string) => void;
 
-export async function runPipeline(rawUrl: string, onStage?: StageEvent): Promise<PipelineOutcome> {
+/** Reports the run's canonical id the moment it exists, before any fetch or
+ *  provider call. Stage 1.2: the browser needs the id EARLY, because a stream
+ *  that breaks mid-run can only be recovered by asking for that same run —
+ *  and a run whose id the client never learned is a paid computation nobody
+ *  can collect. */
+export type RunIdEvent = (runId: string) => void;
+
+export async function runPipeline(
+  rawUrl: string,
+  onStage?: StageEvent,
+  onRunId?: RunIdEvent
+): Promise<PipelineOutcome> {
   loadEnv();
   beginUsageCollection(); // per-run token/cost records (safe: one run at a time)
   const emit: StageEvent = (m) => onStage?.(m);
@@ -39,6 +50,11 @@ export async function runPipeline(rawUrl: string, onStage?: StageEvent): Promise
     pagesFetched: [],
     stages: [],
   };
+  // One id, generated once, above. Everything downstream — the run_started
+  // event, the run log filename's contents, PV_RUN_SUMMARY, the terminal
+  // result and the recovery route — reads this same field. There is no second
+  // identifier for a run anywhere in the system.
+  onRunId?.(log.runId);
 
   // Runs one stage with started/completed/failed + duration + confidence
   // reporting. Purely observational — adds no behaviour to any Contract.

@@ -172,14 +172,33 @@ export function readRateLimitConfig(): RateLimitConfig {
   return { runsPerHour, detail: `${runsPerHour}/hour` };
 }
 
-export function rateLimitCheck(ip: string): { allowed: boolean; message?: string } {
-  const { runsPerHour } = readRateLimitConfig();
+// Stage 1.2. Recovering an already-completed Snapshot is a disk read, not a
+// paid computation, so it must not spend the visitor's 4-per-hour paid
+// allowance — otherwise a broken connection would cost them the very retries
+// they need. It still needs SOME control, because the lookup scans run logs.
+//
+// A named bucket keeps the two counters completely separate while reusing one
+// rolling-window implementation. `paid` is the historical behaviour and the
+// default, so every existing caller is unchanged.
+export interface RateLimitBucket {
+  /** Namespace for the counter. Different buckets never share an allowance. */
+  bucket?: string;
+  /** Overrides the configured per-hour limit. Used only by non-paid buckets. */
+  runsPerHour?: number;
+}
+
+export function rateLimitCheck(
+  ip: string,
+  options: RateLimitBucket = {}
+): { allowed: boolean; message?: string } {
+  const runsPerHour = options.runsPerHour ?? readRateLimitConfig().runsPerHour;
   if (runsPerHour <= 0) return { allowed: true };
+  const key = options.bucket ? `${options.bucket}:${ip}` : ip;
   const now = Date.now();
   const windowStart = now - WINDOW_MS;
-  const recent = (hits.get(ip) ?? []).filter((t) => t > windowStart);
+  const recent = (hits.get(key) ?? []).filter((t) => t > windowStart);
   if (recent.length >= runsPerHour) {
-    hits.set(ip, recent);
+    hits.set(key, recent);
     // Tell them roughly when their oldest hit falls out of the rolling window,
     // rather than a vague "later" — a real ETA reads as intentional, not stuck.
     const retryMinutes = Math.max(1, Math.ceil((recent[0] + WINDOW_MS - now) / 60_000));
@@ -194,7 +213,7 @@ export function rateLimitCheck(ip: string): { allowed: boolean; message?: string
     };
   }
   recent.push(now);
-  hits.set(ip, recent);
+  hits.set(key, recent);
   // Bound memory: drop stale IPs occasionally.
   if (hits.size > 5000) {
     for (const [k, v] of hits) if (!v.some((t) => t > windowStart)) hits.delete(k);

@@ -19,6 +19,11 @@ export type SnapshotState =
   | "unavailable"
   | "busy"
   | "backend_unreachable"
+  // Stage 1.2. The connection broke and we went looking for the completed run.
+  // These two say what we found, and both are careful never to suggest that
+  // anything will be analysed again — the visitor's Snapshot was paid for once.
+  | "unrecoverable"
+  | "recovery_exhausted"
   | "error";
 
 export interface SnapshotFailure {
@@ -60,6 +65,22 @@ const COPY: Record<SnapshotState, { message: string; offerHumanPath: boolean }> 
   // indistinguishable to the visitor from any other outage: it is not their
   // problem which part failed.
   backend_unreachable: { message: UNAVAILABLE_MESSAGE, offerHumanPath: true },
+  // We asked for the completed run and got a definite answer that there is
+  // nothing stored. Says so plainly, and does not imply a rerun.
+  unrecoverable: {
+    message:
+      "The connection was interrupted and we couldn't retrieve a completed Growth Snapshot for it.",
+    offerHumanPath: true,
+  },
+  // We asked several times, over about three minutes, and never got an answer.
+  // Deliberately avoids "rerunning", "analysing again" and "restarting": none
+  // of those happened, and starting a genuinely new run stays the visitor's
+  // explicit choice.
+  recovery_exhausted: {
+    message:
+      "The connection was interrupted and we couldn't reach your completed Growth Snapshot in time.",
+    offerHumanPath: true,
+  },
   error: { message: GENERIC_MESSAGE, offerHumanPath: true },
 };
 
