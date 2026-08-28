@@ -52,7 +52,25 @@ Room (real pipeline milestones streamed as NDJSON — no artificial timers) →
 public Growth Snapshot → optional "Email me this Growth Snapshot" (persistence,
 never a gate). Routes: `GET /`, `POST /api/snapshot` (streams milestones +
 result), `POST /api/email` (sends via Resend; honest not-configured state
-without a key).
+without a key), `POST /api/report-enquiry` (see below).
+
+### The Growth Report enquiry route
+
+`POST /api/report-enquiry` is the operational entry point for a Growth Report,
+called by Website V2's `/start/` page. It accepts five fields — name, email,
+business name, business website, and one optional context answer — validates
+them, and sends **one internal email to DRDS**.
+
+It is structurally incapable of the expensive things: `runPipeline` is never
+called from it, no `llm` module is reachable on its path, it reads no run log
+(so no `publicSnapshot`, `reasoningResult` or `growthSnapshot` is in scope), and
+it consults no budget and records no spend. It has its own rate-limit bucket, so
+enquiry traffic can never consume a visitor's paid Snapshot allowance.
+
+There is no database, no CRM and no lead store: the email IS the record, so a
+delivery failure is reported to the visitor as a failure rather than thanked for.
+Set `DRDS_REPORT_ENQUIRY_TO` — it has no default, and an unset value makes the
+route refuse rather than fall back to an unrelated recipient.
 
 ### The public observation boundary
 

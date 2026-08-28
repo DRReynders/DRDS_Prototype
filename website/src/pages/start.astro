@@ -1,22 +1,22 @@
 ---
-// The Growth Report start surface. STRUCTURE ONLY in this phase.
+// The Growth Report enquiry surface. OPERATIONAL.
 //
-// TEMPORARY COPY — placeholder wording to prove the structure.
+// This page used to be structure only: it said so plainly, submitted nowhere,
+// stored nothing, and pointed at the Strategy Call instead. That was honest
+// while it was true. It is no longer true, so none of that copy survives here —
+// the form now posts to a real endpoint that sends a real internal email.
 //
-// DELIBERATELY NOT WIRED UP. This form submits nowhere, stores nothing, and
-// collects nothing. There is no endpoint, no handler and no persistence. The
-// commercial workflow — qualification, invoice, EFT, production — is a later,
-// separately authorised phase.
+// What submitting genuinely does, stated once so the copy below can be checked
+// against it: the browser POSTs five fields to the DRDS API, which validates
+// them and sends ONE internal email to DRDS. There is no database, no CRM and
+// no mailing list, so that email is the whole record. Nothing is charged, no
+// Growth Report is started, and no automatic reply is sent to the enquirer.
 //
-// The live Strategy Call route remains DRDS's working enquiry channel and is
-// linked below. It is NOT replaced or redirected by this page, and must stay
-// that way until this form genuinely works.
-//
-// Form design intent: absorb ambiguity for the prospect and stay short. It is
-// not a discovery questionnaire — the diagnosis is what DRDS is paid for, so
-// asking the prospect to self-diagnose here would be the wrong shape entirely.
+// Form design intent, unchanged: absorb ambiguity for the prospect and stay
+// short. It is not a discovery questionnaire — the diagnosis is what DRDS is
+// paid for, so asking the prospect to self-diagnose here would be exactly the
+// wrong shape. Every field is something DRDS cannot derive for itself.
 import BaseLayout from "../layouts/BaseLayout.astro";
-import { STRATEGY_CALL_URL } from "../lib/config";
 ---
 
 <BaseLayout
@@ -40,95 +40,253 @@ import { STRATEGY_CALL_URL } from "../lib/config";
   </section>
 
   <div class="wrap">
-    <!-- NOT IMPLEMENTED — see the notice inside the form. -->
-    <div class="notice" data-tone="info">
-      <p>
-        <strong>This form is not live yet.</strong> It is the structure for a later phase and submits
-        nowhere. To start a Growth Report today,
-        <a href={STRATEGY_CALL_URL}>book a Strategy Call</a> — that route is live and monitored.
+    <!-- What this form is, and what it is not. Four plain facts, no hedging and
+         no scarcity: this starts a review, not a purchase and not production. -->
+    <div class="notice start-scope" data-tone="info">
+      <p class="prose">
+        This starts an enquiry, not a purchase. Nothing is charged here and no card details are taken.
+        We read every enquiry ourselves and reply by email — a Growth Report begins only once we have
+        both agreed it is the right piece of work.
       </p>
     </div>
 
-    <form id="start-form" class="start-form panel stack" novalidate aria-describedby="start-unimplemented">
+    <form id="start-form" class="start-form panel stack" novalidate>
       <h2>Your details</h2>
 
       <div class="start-form__field">
         <label for="start-name">Your name</label>
-        <input id="start-name" name="name" type="text" autocomplete="name" required />
+        <input id="start-name" name="name" type="text" autocomplete="name" maxlength="120" required />
+        <p class="field-error" data-error-for="name" role="alert" hidden></p>
       </div>
 
       <div class="start-form__field">
         <label for="start-email">Email</label>
-        <input id="start-email" name="email" type="email" autocomplete="email" required />
+        <input id="start-email" name="email" type="email" autocomplete="email" maxlength="254" required />
+        <p class="field-error" data-error-for="email" role="alert" hidden></p>
+      </div>
+
+      <div class="start-form__field">
+        <label for="start-business">Business name</label>
+        <input
+          id="start-business"
+          name="businessName"
+          type="text"
+          autocomplete="organization"
+          maxlength="160"
+          required
+        />
+        <p class="field-error" data-error-for="businessName" role="alert" hidden></p>
       </div>
 
       <div class="start-form__field">
         <label for="start-website">Business website</label>
         <input
           id="start-website"
-          name="website"
+          name="businessWebsite"
           type="text"
           inputmode="url"
+          autocomplete="url"
           autocapitalize="off"
           spellcheck="false"
+          maxlength="300"
           aria-describedby="start-website-hint"
           required
         />
         <p id="start-website-hint" class="field-hint">
           If you have already run a Growth Snapshot, use the same address.
         </p>
+        <p class="field-error" data-error-for="businessWebsite" role="alert" hidden></p>
       </div>
 
       <div class="start-form__field">
-        <label for="start-context">What prompted this? <span class="muted">(optional)</span></label>
-        <textarea id="start-context" name="context" rows="4" aria-describedby="start-context-hint"></textarea>
+        <label for="start-context">
+          What should we know about why you're looking at this now?
+          <span class="muted">(optional)</span>
+        </label>
+        <textarea
+          id="start-context"
+          name="context"
+          rows="4"
+          maxlength="1200"
+          aria-describedby="start-context-hint"></textarea>
         <p id="start-context-hint" class="field-hint">
           A sentence or two is plenty. You are not expected to diagnose anything — that is our job.
         </p>
+        <p class="field-error" data-error-for="context" role="alert" hidden></p>
       </div>
 
-      <p id="start-unimplemented" class="field-hint">
-        Submission is intentionally unimplemented in this phase. Nothing you type here is sent or stored.
+      <!-- Bot check. Hidden from sight, from assistive technology and from the
+           tab order, and named for nothing a password manager recognises, so no
+           person and no autofill ever reaches it. If it arrives filled in, the
+           server treats the submission as automated. -->
+      <div class="start-form__trap" aria-hidden="true">
+        <label for="start-contact-preference">Do not fill this in</label>
+        <input
+          id="start-contact-preference"
+          name="contactPreference"
+          type="text"
+          tabindex="-1"
+          autocomplete="off"
+        />
+      </div>
+
+      <p class="field-hint">
+        We use these details only to review your Growth Report enquiry and reply to you. This does not
+        add you to a mailing list, and we send no automatic follow-up.
       </p>
 
-      <button type="submit" class="button button--primary" aria-disabled="true">
-        Submission not yet available
-      </button>
+      <button id="start-submit" type="submit" class="button button--primary">Send enquiry</button>
 
+      <!-- One live region for the whole form: the submitting note, the failure
+           message and the validation summary all land here, so a screen reader
+           user is told what happened without hunting for it. -->
       <div id="start-status" class="notice" data-tone="warn" role="status" aria-live="polite" tabindex="-1" hidden>
         <p id="start-status-message"></p>
       </div>
     </form>
+
+    <!-- SUCCESS. Replaces the form rather than sitting under it: leaving a
+         submitted form on screen invites a second submission of the same
+         enquiry. Says what will happen, and nothing that has not happened. -->
+    <section id="start-success" class="panel stack" hidden tabindex="-1" aria-labelledby="start-success-heading">
+      <h2 id="start-success-heading">Your enquiry is with us</h2>
+      <p class="prose" id="start-success-message"></p>
+      <p class="prose muted">
+        Nothing has been charged and no Growth Report has started. We read enquiries ourselves rather
+        than routing them anywhere automated, so the reply will come from a person.
+      </p>
+    </section>
   </div>
 
   <script>
-    import { track, START_BEGUN } from "../lib/analytics-events";
+    import { track, START_BEGUN, START_SUBMITTED } from "../lib/analytics-events";
+    import { submitReportEnquiry, validateEnquiryInput } from "../lib/enquiry-client";
 
     const form = document.getElementById("start-form") as HTMLFormElement;
+    const submit = document.getElementById("start-submit") as HTMLButtonElement;
     const status = document.getElementById("start-status") as HTMLElement;
-    const message = document.getElementById("start-status-message") as HTMLElement;
+    const statusMessage = document.getElementById("start-status-message") as HTMLElement;
+    const success = document.getElementById("start-success") as HTMLElement;
+    const successMessage = document.getElementById("start-success-message") as HTMLElement;
 
-    // The form must not appear to work. Submission is blocked and says so
-    // plainly rather than failing silently or pretending to succeed.
-    form.addEventListener("submit", (event) => {
+    const FIELDS = ["name", "email", "businessName", "businessWebsite", "context"] as const;
+
+    function errorNode(field: string): HTMLElement | null {
+      return form.querySelector<HTMLElement>(`[data-error-for="${field}"]`);
+    }
+
+    function inputNode(field: string): HTMLInputElement | HTMLTextAreaElement | null {
+      return form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${field}"]`);
+    }
+
+    function clearErrors(): void {
+      for (const field of FIELDS) {
+        const node = errorNode(field);
+        if (node) {
+          node.textContent = "";
+          node.hidden = true;
+        }
+        inputNode(field)?.removeAttribute("aria-invalid");
+      }
+      status.hidden = true;
+      statusMessage.textContent = "";
+    }
+
+    function showErrors(fields: Record<string, string>, summary: string): void {
+      for (const field of FIELDS) {
+        const message = fields[field];
+        const node = errorNode(field);
+        if (!node) continue;
+        if (message) {
+          node.textContent = message;
+          node.hidden = false;
+          inputNode(field)?.setAttribute("aria-invalid", "true");
+        }
+      }
+      statusMessage.textContent = summary;
+      status.dataset.tone = "warn";
+      status.hidden = false;
+      // Move focus to the first field that needs attention, not to the summary:
+      // the person's next action is typing, not reading.
+      const first = FIELDS.find((f) => fields[f]);
+      if (first) inputNode(first)?.focus();
+      else status.focus();
+    }
+
+    function setBusy(busy: boolean): void {
+      submit.disabled = busy;
+      submit.textContent = busy ? "Sending…" : "Send enquiry";
+      form.setAttribute("aria-busy", busy ? "true" : "false");
+    }
+
+    // Double-submit protection, held here rather than only on the button: a
+    // second Enter keypress fires submit again before a disabled attribute has
+    // repainted, and one enquiry must not become two emails.
+    let inFlight = false;
+
+    form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      message.textContent =
-        "This form isn't live yet, so nothing was sent. Please book a Strategy Call and we'll pick it up from there.";
+      if (inFlight) return;
+
+      const input = {
+        name: (inputNode("name")?.value ?? "").trim(),
+        email: (inputNode("email")?.value ?? "").trim(),
+        businessName: (inputNode("businessName")?.value ?? "").trim(),
+        businessWebsite: (inputNode("businessWebsite")?.value ?? "").trim(),
+        context: (inputNode("context")?.value ?? "").trim(),
+      };
+
+      clearErrors();
+      const local = validateEnquiryInput(input);
+      if (Object.keys(local).length > 0) {
+        showErrors(local, "Please check the highlighted fields and try again.");
+        return;
+      }
+
+      inFlight = true;
+      setBusy(true);
+      statusMessage.textContent = "Sending your enquiry…";
+      status.dataset.tone = "info";
+      status.hidden = false;
+
+      let outcome;
+      try {
+        outcome = await submitReportEnquiry(input);
+      } finally {
+        inFlight = false;
+        setBusy(false);
+      }
+
+      if (outcome.kind === "received") {
+        track(START_SUBMITTED, { outcome: "received" });
+        form.hidden = true;
+        document.querySelector(".start-scope")?.setAttribute("hidden", "");
+        successMessage.textContent = outcome.message;
+        success.hidden = false;
+        success.focus();
+        return;
+      }
+
+      if (outcome.kind === "invalid") {
+        showErrors(outcome.fields, outcome.message);
+        return;
+      }
+
+      // Temporary failure. The form stays exactly as the person left it so the
+      // retry costs them no retyping.
+      statusMessage.textContent = outcome.message;
+      status.dataset.tone = "warn";
       status.hidden = false;
       status.focus();
     });
 
     // Fires once, on first interaction. No field VALUE is ever captured.
     let begun = false;
-    form.addEventListener(
-      "input",
-      () => {
-        if (begun) return;
-        begun = true;
-        track(START_BEGUN, { referrerKind: document.referrer.includes("/snapshot") ? "snapshot_result" : "direct" });
-      },
-      { once: false }
-    );
+    form.addEventListener("input", () => {
+      if (begun) return;
+      begun = true;
+      track(START_BEGUN, { referrerKind: document.referrer.includes("/snapshot") ? "snapshot_result" : "direct" });
+    });
   </script>
 </BaseLayout>
 
@@ -137,7 +295,8 @@ import { STRATEGY_CALL_URL } from "../lib/config";
     padding-block: clamp(2.5rem, 7vw, 4rem) 0;
   }
 
-  .start-form {
+  .start-form,
+  #start-success {
     max-width: 34rem;
     margin-block-start: 1.5rem;
   }
@@ -145,5 +304,30 @@ import { STRATEGY_CALL_URL } from "../lib/config";
   .start-form__field {
     display: grid;
     gap: 0.4rem;
+  }
+
+  /* Validation messages sit with the field they belong to and read as guidance
+     rather than as alarm — the same restraint as every other surface. */
+  .field-error {
+    font-size: 0.82rem;
+    color: var(--stop);
+    margin: 0;
+  }
+
+  input[aria-invalid="true"],
+  textarea[aria-invalid="true"] {
+    border-color: var(--stop);
+  }
+
+  /* Off-screen rather than display:none. A submitter that skips hidden inputs
+     is exactly what this field is looking for, and `aria-hidden` plus
+     `tabindex="-1"` already keep it away from people. */
+  .start-form__trap {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 </style>

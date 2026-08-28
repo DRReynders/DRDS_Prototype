@@ -71,7 +71,12 @@ export const ROUTES = {
   start: "/start/",
 } as const;
 
-/** The live WordPress Strategy Call route. It remains DRDS's working enquiry
- *  channel and must stay reachable until /start/ is genuinely valid, so it is
- *  referenced absolutely rather than as a V2 route. */
+/** The live WordPress Strategy Call route.
+ *
+ *  It is NO LONGER the Growth Report enquiry channel: /start/ is operational and
+ *  owns that flow end to end. What remains here is a general route for the two
+ *  places where the enquiry form genuinely cannot serve — a visitor without
+ *  JavaScript, and a visitor whose Growth Snapshot failed and who needs a person
+ *  rather than a paid-Report enquiry form — plus the site footer. Referenced
+ *  absolutely because it is a WordPress route, not a V2 one. */
 export const STRATEGY_CALL_URL = "https://drdigitalsystems.co.za/strategy-call/";

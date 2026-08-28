@@ -113,14 +113,42 @@ Directory Privacy. Neither replaces the other.
 |---|---|---|
 | `/` | `dist/index.html` | Shell. Placeholder copy. |
 | `/snapshot/` | `dist/snapshot/index.html` | Full state structure. Calls the live API. |
-| `/start/` | `dist/start/index.html` | Form structure. **Submits nowhere.** `noindex`. |
+| `/start/` | `dist/start/index.html` | **Operational** Growth Report enquiry. POSTs to `/api/report-enquiry`. `noindex`. |
 | `robots.txt` | `dist/robots.txt` | Generated from `PUBLIC_SITE_ENV`. See above. |
 
 `build.format: "directory"` plus `trailingSlash: "always"` means conventional
 static hosting serves these as directory URLs with no rewrite rules.
 
 The live WordPress **Strategy Call** route is not replaced or redirected by this
-site. It stays operational and linked until `/start/` genuinely works.
+site, but it is no longer part of the Growth Report flow: `/start/` is
+operational and owns that funnel end to end. Strategy Call remains linked in the
+footer, in the `/snapshot/` `<noscript>` block and in the `/snapshot/` failure
+state — three places where the enquiry form genuinely cannot serve, because
+either JavaScript is unavailable or the visitor needs a person rather than a
+paid-Report enquiry form.
+
+## The Growth Report enquiry (`/start/`)
+
+`/start/` posts five fields — name, email, business name, business website and
+one optional context answer — to `POST /api/report-enquiry` on the same API
+origin the Snapshot uses (`PUBLIC_SNAPSHOT_API_ORIGIN`). There is no second
+origin setting, because there is no second deployment.
+
+The backend validates the submission and sends **one internal email to DRDS**.
+There is no database, no CRM and no mailing list: that email is the whole record
+of the enquiry, which is why a delivery failure is reported to the visitor as a
+failure rather than thanked for. Nothing is charged, no Growth Report is started
+and no automatic reply is sent to the enquirer.
+
+The backend needs one environment variable set before this route can work:
+
+```
+DRDS_REPORT_ENQUIRY_TO=audit@drdigitalsystems.co.za   # where enquiries land
+```
+
+It has no default. An unset value makes the route refuse to send and answer
+`503` rather than silently routing a prospect's details to whichever address
+happened to be configured for something else.
 
 ## Browser origin boundary (CORS)
 

@@ -10,9 +10,11 @@ const year = new Date().getFullYear();
       <ul class="site-footer__links">
         <li><a href={ROUTES.snapshot}>Growth Snapshot</a></li>
         <li><a href={ROUTES.start}>Growth Report</a></li>
-        {/* The live WordPress Strategy Call route. It stays operational and
-            linked until /start/ is genuinely valid — removing it is a later,
-            separate decision, not part of this foundation. */}
+        {/* The live WordPress Strategy Call route. It is no longer the Growth
+            Report enquiry channel — /start/ is operational and owns that flow.
+            It stays in the footer as a general way to reach a person, which is
+            deliberately OUTSIDE the Growth Report funnel. Whether the site keeps
+            offering it at all is a navigation decision, not part of this pass. */}
         <li><a href={STRATEGY_CALL_URL}>Strategy Call</a></li>
       </ul>
     </nav>

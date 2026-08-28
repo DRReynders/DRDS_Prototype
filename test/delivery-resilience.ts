@@ -450,7 +450,7 @@ console.log("\n=== 5. Recovery route: stored run in, public projection out ===")
 console.log("\n=== 6. CORS still an explicit allowlist, now covering recovery ===");
 {
   const serverSource = read("src/web/server.ts");
-  check("recovery is behind the CORS boundary", /API_ROUTES = new Set\(\["\/api\/snapshot", "\/api\/recover", "\/api\/email"\]\)/.test(serverSource));
+  check("recovery is behind the CORS boundary", /API_ROUTES = new Set\([^)]*"\/api\/recover"/.test(serverSource));
   const cors = read("src/web/cors.ts");
   check("no wildcard was introduced", !cors.includes('"*"') || cors.includes('trimmed === "*") return null'));
   check("the allowlist is still exact-origin", /readAllowedOrigins/.test(cors));
