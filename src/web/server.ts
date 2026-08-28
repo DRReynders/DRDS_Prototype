@@ -134,6 +134,55 @@ function stageState(reached: boolean, produced: boolean): "completed" | "failed"
   return produced ? "completed" : "failed";
 }
 
+// ─── Stage 1.2: transport observability ──────────────────────────────────────
+//
+// The first live run completed, cost $0.2476, and the visitor saw a failure —
+// and the server had no way to say which of those two facts described the
+// delivery. It had no abort handler, no response error handler, and no way to
+// distinguish "response finished" from "socket closed early".
+//
+// One compact event type answers that. Never carries Snapshot content, an email
+// address, a provider detail or a key.
+function logDelivery(event: string, runId: string | null, detail: Record<string, unknown> = {}): void {
+  console.log("PV_DELIVERY " + JSON.stringify({ event, runId, ...detail }));
+}
+
+/** The run currently being computed, if any. Lets the recovery route answer
+ *  "still working on it" instead of "never heard of it" — the difference
+ *  between a client that waits and a client that gives up. */
+let currentRunId: string | null = null;
+
+/** End a response at most once.
+ *
+ *  Stage 1.2 hardening of a narrow risk the transport investigation found: the
+ *  success path ends the response as its last statement, and the catch ends it
+ *  again if headers were already sent. If the first end threw — which is
+ *  exactly what a broken socket does — the catch would end a second time and
+ *  turn a delivery failure into an unhandled one. */
+function safeEnd(res: ServerResponse, body?: string): void {
+  if (res.writableEnded || res.destroyed) return;
+  try {
+    if (body === undefined) res.end();
+    else res.end(body);
+  } catch (err) {
+    logDelivery("end_failed", currentRunId, { code: (err as NodeJS.ErrnoException)?.code ?? "unknown" });
+  }
+}
+
+// How often a heartbeat line is written while the pipeline is working.
+//
+// The measured silence between milestone writes is a median of 69s and up to
+// 98s, because a milestone fires when a stage STARTS and Contract 4 then runs
+// for over a minute. Any idle-based timeout between the browser and this
+// process sees a dead connection for that whole window.
+//
+// 15 seconds keeps the connection demonstrably active with a wide margin under
+// the 30-60s idle limits proxies commonly use, at a cost of roughly 22 bytes
+// per beat — about eight beats across a typical run. It is a fixed constant,
+// not configuration: there is no operational question a knob would answer here,
+// and Railway's actual limit is not known to us anyway.
+const HEARTBEAT_MS = 15_000;
+
 function logRunSummary(log: {
   runId: string;
   startedAt: string;
@@ -160,6 +209,16 @@ function logRunSummary(log: {
         // is carried alongside it rather than folded into it.
         status: log.failure ? "failed" : "completed",
         failureStage: log.failure?.stage,
+        // Stage 1.2. `status` describes the COMPUTATION and always has. The
+        // first live incident read "completed" against a browser that showed a
+        // failure, and nothing in this line said which one it meant.
+        //
+        // This line is emitted before the terminal result is written, so at
+        // this instant delivery genuinely has not been attempted. The resolved
+        // outcome arrives separately as PV_DELIVERY response_finished or
+        // closed_before_finish. Even response_finished only proves the bytes
+        // left this process — no server can prove a browser rendered anything.
+        publicDelivery: "not yet attempted — see PV_DELIVERY",
         // The three states Product Council asked to be distinguishable. Each is
         // three-valued: a stage that never ran is "not reached", which is a
         // different fact from one that ran and failed.
@@ -236,17 +295,69 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
       "X-Accel-Buffering": "no",
       ...corsHeaders(resolveCors(req.headers.origin)),
     });
-    const write = (obj: unknown) => res.write(JSON.stringify(obj) + "\n");
+
+    // Nothing is written to a response that has already ended or been
+    // destroyed. The heartbeat timer and the pipeline both outlive a browser
+    // that walks away, and neither may write into a dead socket.
+    const write = (obj: unknown): void => {
+      if (res.writableEnded || res.destroyed) return;
+      res.write(JSON.stringify(obj) + "\n");
+    };
+
+    // Transport observability. Registered before any work so an abort during
+    // the run is seen. `runId` is filled in a moment later by run_started.
+    let runId: string | null = null;
+    req.on("aborted", () => logDelivery("request_aborted", runId));
+    res.on("error", (err: NodeJS.ErrnoException) =>
+      logDelivery("response_error", runId, { code: err?.code ?? "unknown" })
+    );
+    res.on("close", () => {
+      // finish = the response was fully written and flushed to the OS.
+      // close without finish = the peer went away mid-stream, which is the
+      // shape of the incident this stage exists to survive.
+      if (!res.writableFinished) logDelivery("closed_before_finish", runId);
+    });
+    res.on("finish", () => logDelivery("response_finished", runId));
+
+    // Heartbeat: keeps the connection demonstrably active through the long
+    // silent windows. Carries a type and nothing else — no result, no
+    // reasoning, no progress claim, no provider detail. `unref` so a stray
+    // timer can never hold the process open.
+    const heartbeat = setInterval(() => {
+      if (res.writableEnded || res.destroyed) {
+        clearInterval(heartbeat);
+        return;
+      }
+      write({ type: "heartbeat" });
+    }, HEARTBEAT_MS);
+    heartbeat.unref?.();
 
     const seen = new Set<string>();
-    const { log } = await runPipeline(url, (event) => {
-      if (!event.endsWith("— started")) return;
-      const m = MILESTONES.find(([prefix]) => event.startsWith(prefix));
-      if (m && !seen.has(m[0])) {
-        seen.add(m[0]);
-        write({ type: "milestone", label: m[1] });
-      }
-    });
+    let log: Awaited<ReturnType<typeof runPipeline>>["log"];
+    try {
+      ({ log } = await runPipeline(
+        url,
+        (event) => {
+          if (!event.endsWith("— started")) return;
+          const m = MILESTONES.find(([prefix]) => event.startsWith(prefix));
+          if (m && !seen.has(m[0])) {
+            seen.add(m[0]);
+            write({ type: "milestone", label: m[1] });
+          }
+        },
+        // The canonical id, announced before any fetch or provider call. A
+        // client that has this can collect the result later even if this
+        // connection dies one second from now.
+        (id) => {
+          runId = id;
+          currentRunId = id;
+          write({ type: "run_started", runId: id });
+        }
+      ));
+    } finally {
+      clearInterval(heartbeat);
+      currentRunId = null;
+    }
 
     if (log.llmUsage && log.llmUsage.totals.estimatedCostUsd > 0) {
       // Bookkeeping runs after the Snapshot already exists, so a ledger failure
@@ -308,7 +419,7 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
         publicSnapshot: log.publicSnapshot,
       });
     }
-    res.end();
+    safeEnd(res);
   } catch (err) {
     // Truly unexpected — outside the pipeline's own try/catch (e.g. a bad
     // request body). Full detail goes to the server's own console (captured
@@ -318,10 +429,90 @@ async function handleSnapshot(req: IncomingMessage, res: ServerResponse): Promis
     if (!res.headersSent) {
       json(req, res, 500, body);
     } else {
-      res.end(JSON.stringify(body) + "\n");
+      // safeEnd, not res.end: if the success path's end already ran or the
+      // socket is gone, ending again would raise a second error inside the
+      // handler for the first one.
+      safeEnd(res, JSON.stringify(body) + "\n");
     }
   } finally {
     busy = false;
+  }
+}
+
+// ─── Stage 1.2: recovery by runId ────────────────────────────────────────────
+//
+//   Retry delivery, never silently retry paid computation.
+//
+// A Snapshot that cost real money and completed on the server must not be lost
+// because a connection broke on the way to the browser. This route hands back
+// an ALREADY-STORED public projection and does nothing else.
+//
+// What it structurally cannot do:
+//   · run the pipeline — runPipeline is never called from here;
+//   · call a provider — no llm module is reachable on this path;
+//   · spend anything — no budget is consulted because none is consumed;
+//   · leak judgement — it reads `publicSnapshot` and never `growthSnapshot`,
+//     `reasoningResult` or `internalFailure`.
+//
+// It deliberately does NOT consume the paid 4-per-hour allowance: a broken
+// connection must not cost the visitor the retries they need to collect what
+// they already paid for. It gets its own, more generous bucket instead.
+const RECOVERY_LIMIT_PER_HOUR = 60;
+
+async function handleRecover(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const rate = rateLimitCheck(clientIp(req), { bucket: "recover", runsPerHour: RECOVERY_LIMIT_PER_HOUR });
+  if (!rate.allowed) {
+    json(req, res, 429, { state: "rate_limited", message: "Too many recovery attempts. Please try again shortly." });
+    return;
+  }
+  try {
+    const runId = String((await readBody(req)).runId ?? "");
+
+    // The run this process is computing right now. Answering "pending" rather
+    // than "not found" is what lets a client wait instead of giving up on work
+    // that is still being paid for.
+    if (runId && runId === currentRunId) {
+      logDelivery("recovery_pending", runId);
+      json(req, res, 202, {
+        state: "pending",
+        message: "Your Growth Snapshot is still being prepared. Please wait a moment.",
+      });
+      return;
+    }
+
+    const found = findRunLogByRunId(runId);
+    if (!found) {
+      logDelivery("recovery_not_found", runId || null);
+      json(req, res, 404, {
+        state: "not_found",
+        message: "We couldn't find that Growth Snapshot. It may have expired.",
+      });
+      return;
+    }
+    if (!found.log.publicSnapshot) {
+      // The run exists but never produced a public product — it failed before
+      // the observation layer, or predates the projection entirely. Reported
+      // honestly; there is deliberately no fallback to the internal Snapshot.
+      logDelivery("recovery_incomplete", runId);
+      json(req, res, 409, {
+        state: "incomplete",
+        message: "That Growth Snapshot did not complete. Nothing was stored to show you.",
+      });
+      return;
+    }
+
+    logDelivery("recovery_served", runId);
+    json(req, res, 200, {
+      state: "recovered",
+      runId: found.log.runId,
+      businessName: found.log.cip?.businessName,
+      mockMode: (process.env.DRDS_LLM_PROVIDER || "anthropic").toLowerCase() === "mock",
+      // The identical public projection the live stream would have carried.
+      publicSnapshot: found.log.publicSnapshot,
+    });
+  } catch (err) {
+    console.error("PV_UNEXPECTED_RECOVERY_ERROR", err instanceof Error ? err.stack ?? err.message : String(err));
+    json(req, res, 500, { state: "error", message: GENERIC_FAILURE_MESSAGE });
   }
 }
 
@@ -394,9 +585,16 @@ async function handleEmail(req: IncomingMessage, res: ServerResponse): Promise<v
   }
 }
 
-const API_ROUTES = new Set(["/api/snapshot", "/api/email"]);
+// Every browser-reachable API path. Membership here is what puts a route behind
+// the exact-origin CORS allowlist and gives it a readable preflight — so a new
+// route must be added, or the site's own page could not read its responses.
+// Still an explicit list; still no wildcard anywhere.
+const API_ROUTES = new Set(["/api/snapshot", "/api/recover", "/api/email"]);
 
-const server = createServer(async (req, res) => {
+// Exported so an offline test can bind it on an ephemeral port (PORT=0),
+// exercise the real NDJSON route end to end and close it again. Nothing in
+// production reads this export; the listen call below is unchanged.
+export const server = createServer(async (req, res) => {
   if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(readFileSync(join(WEB_DIR, "index.html"), "utf8"));
@@ -433,6 +631,7 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === "POST" && req.url === "/api/snapshot") return handleSnapshot(req, res);
+  if (req.method === "POST" && req.url === "/api/recover") return handleRecover(req, res);
   if (req.method === "POST" && req.url === "/api/email") return handleEmail(req, res);
   res.writeHead(404, { "Content-Type": "text/plain" });
   res.end("Not found");
