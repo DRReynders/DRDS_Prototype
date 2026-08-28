@@ -27,7 +27,7 @@
 // backend returns. It does not compute, rank, re-word or second-guess a
 // constraint. The judgement lives in the Growth Report.
 import BaseLayout from "../layouts/BaseLayout.astro";
-import { ROUTES, STRATEGY_CALL_URL, SNAPSHOT_API_ORIGIN } from "../lib/config";
+import { GROWTH_REPORT_PILOT_PRICE, ROUTES, SNAPSHOT_API_ORIGIN } from "../lib/config";
 
 // Read at BUILD time. Two jobs: a missing or invalid API origin fails the build
 // rather than shipping a page whose primary action silently does nothing, and
@@ -86,9 +86,9 @@ const apiOrigin = SNAPSHOT_API_ORIGIN;
       <noscript>
         <div class="notice" data-tone="info">
           <p>
-            The Growth Snapshot runs in your browser and needs JavaScript enabled. If you would rather
-            not enable it, <a href={STRATEGY_CALL_URL}>book a Strategy Call</a> and we will go through
-            this with you directly.
+            The Growth Snapshot runs in your browser and needs JavaScript enabled. There is nothing else
+            to do here without it — we would rather say so plainly than send you somewhere you did
+            not ask to go.
           </p>
         </div>
       </noscript>
@@ -124,9 +124,14 @@ const apiOrigin = SNAPSHOT_API_ORIGIN;
         <div class="notice" data-tone="warn" role="status" aria-live="polite">
           <p id="failure-message"></p>
         </div>
+        <!-- Shown only for states the visitor cannot act on. It offers the
+             Growth Report, not a generic call: the Report is a human diagnosis
+             that never depended on this instrument, so it is still available
+             when the instrument is not. It is a paid next step and says so. -->
         <p id="failure-human-path" hidden>
-          In the meantime you can <a href={STRATEGY_CALL_URL}>book a Strategy Call</a> and we will go
-          through this with you directly.
+          The Growth Report does not depend on this tool running — it is a human diagnosis, and it
+          is still open. <a href={ROUTES.start}>Start a Growth Report</a> (controlled pilot,
+          {" "}{GROWTH_REPORT_PILOT_PRICE}; enquiry first, nothing is charged by the form).
         </p>
         <button id="failure-retry" class="button button--secondary" type="button">Try again</button>
       </div>
@@ -191,6 +196,13 @@ const apiOrigin = SNAPSHOT_API_ORIGIN;
           A Growth Snapshot states what can be observed. A Growth Report decides what is actually
           limiting your growth, what is connected to it, and the order to address it in.
         </p>
+        <!-- The price sits ABOVE the button, not after it: a visitor should
+             know what the paid next step costs before they click, not once they
+             have already committed to the page that asks for their details. -->
+        <p class="handoff__price">
+          <span class="handoff__eyebrow">Controlled pilot</span>
+          <strong>{GROWTH_REPORT_PILOT_PRICE}</strong>
+        </p>
         <a
           class="button button--primary"
           href={ROUTES.start}
@@ -199,6 +211,9 @@ const apiOrigin = SNAPSHOT_API_ORIGIN;
         >
           Start a Growth Report
         </a>
+        <p class="handoff__terms">
+          Enquiry first — we review it before invoicing, and nothing is charged along the way.
+        </p>
       </aside>
     </section>
   </div>
@@ -688,5 +703,35 @@ const apiOrigin = SNAPSHOT_API_ORIGIN;
     display: grid;
     gap: 0.75rem;
     justify-items: start;
+  }
+
+  /* Quiet, not a price tag. The number is stated once, at normal reading
+     weight, above the action it applies to. No badge, no colour block, no
+     struck-through comparison — this is a professional fee, not a promotion. */
+  .handoff__price {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin: 0;
+  }
+
+  .handoff__eyebrow {
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--slate);
+  }
+
+  .handoff__price strong {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .handoff__terms {
+    font-size: 0.85rem;
+    color: var(--slate);
+    margin: 0;
   }
 </style>

@@ -649,15 +649,117 @@ console.log("\n=== 9. Frontend: the operational contract ===");
     check("...and rules out a mailing list", /does not\s+add you to a mailing list/i.test(page.replace(/\s+/g, " ")));
     check("...and does not promise a response time", !/within \d+ (hour|business day|day)/i.test(page));
     check("...and invents no scarcity", !/only \d+ (spots|places|slots)|hurry|limited time|act now/i.test(page));
-    check("no payment is claimed to have been taken", /nothing is charged/i.test(page) && /no card details/i.test(page));
+    check("no payment is claimed to have been taken", /no payment, no card details/i.test(page));
     check("no claim that a Growth Report has started", !/your Growth Report (has|is now) (started|underway|in production)/i.test(page));
 
-    console.log("\n--- the Snapshot handoff still reaches /start/ ---");
+    console.log("\n--- without JavaScript the form does not pretend to work ---");
+    // The generic Strategy Call used to be the answer here. It is deprecated,
+    // and nothing replaced it, so the page has to be honest about its own
+    // requirement instead of leaving a live button that sends nothing.
+    check("a noscript notice explains the requirement", /<noscript>[\s\S]*?needs JavaScript enabled[\s\S]*?<\/noscript>/.test(page));
+    check("...and offers no generic call in its place", !/strategy call|book a call/i.test(rendered));
+    check("the submit button starts disabled in the markup", /id="start-submit"[^>]*\sdisabled/.test(page));
+    check("...and the script enables it", /submit\.disabled = false;/.test(page));
+
+    console.log("\n--- price conformity: the controlled pilot price is visible ---");
+    const config = read("website/src/lib/config.ts");
+    check("the price is defined once, in config", /GROWTH_REPORT_PILOT_PRICE = "R6,500"/.test(config));
+    check("/start/ shows the price", page.includes("GROWTH_REPORT_PILOT_PRICE"));
+    check("...labelled as the controlled pilot", /controlled pilot/i.test(rendered));
+    check("...and hard-codes no second copy of the number", !/R\s?6[ ,.]?500/.test(rendered), "the number must come from config only");
+    check("...naming what the fee buys", /Owner Report/i.test(rendered) && /Practitioner Brief/i.test(rendered) && /walkthrough/i.test(rendered));
+
+    console.log("\n--- the accepted commercial sequence ---");
+    const seq = rendered.slice(rendered.indexOf("start-terms__sequence"), rendered.indexOf("</ol>"));
+    check("the sequence block was found", seq.length > 0);
+    check("step 1 is the enquiry, with no payment", /enquiry/i.test(seq) && /no payment/i.test(seq));
+    check("step 2 is human review", /we read it ourselves/i.test(seq) && /reply by email/i.test(seq));
+    check("step 3 is invoice then EFT", /invoice/i.test(seq) && /EFT/i.test(seq));
+    check("step 4 is production, after settlement", /production starts/i.test(seq));
+    check("the order is enquiry -> review -> invoice -> production", (() => {
+      const order = ["enquiry", "read it ourselves", "invoice", "Production starts"];
+      let at = -1;
+      return order.every((token) => {
+        const next = seq.toLowerCase().indexOf(token.toLowerCase());
+        if (next <= at) return false;
+        at = next;
+        return true;
+      });
+    })());
+    check("submission is explicitly not acceptance", /not an acceptance/i.test(rendered));
+    // Comment-stripped: the frontmatter explains WHY this is not a checkout,
+    // and a rule that forbids the word in an explanation forbids the
+    // explanation. Same convention public-snapshot-boundary.ts uses.
+    const pageCode = page
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    check("no checkout, cart or card capture anywhere", !/checkout|add to cart|card number|cvv|payfast|stripe|paypal|yoco/i.test(pageCode));
+    check("no payment automation is implied", !/pay now|buy now|purchase now|secure payment/i.test(rendered));
+    check("no urgency or scarcity around the price", !/hurry|act now|limited time|only \d+ (spots|places|slots|left)|ends (soon|today)/i.test(rendered));
+
+    console.log("\n--- the Snapshot handoff: still /start/, now with the price ---");
     const snapshotPage = read("website/src/pages/snapshot.astro");
     check("the Snapshot result CTA points at the start route", /href=\{ROUTES\.start\}/.test(snapshotPage));
     check("...and is still labelled 'Start a Growth Report'", snapshotPage.includes("Start a Growth Report"));
-    const config = read("website/src/lib/config.ts");
     check("ROUTES.start is still /start/", /start:\s*"\/start\/"/.test(config));
+    const handoff = snapshotPage.slice(snapshotPage.indexOf("<aside class=\"handoff\">"), snapshotPage.indexOf("</aside>"));
+    check("the handoff block was found", handoff.length > 0);
+    check("the handoff shows the pilot price", handoff.includes("GROWTH_REPORT_PILOT_PRICE"));
+    check("...labelled as the controlled pilot", /controlled pilot/i.test(handoff));
+    check("...positioned BEFORE the CTA, not after it", handoff.indexOf("GROWTH_REPORT_PILOT_PRICE") < handoff.indexOf('id="report-cta"'));
+    check("...stating that the form takes no payment", /nothing is charged/i.test(handoff));
+    check("...and that review precedes invoicing", /review it before invoicing/i.test(handoff));
+
+    // The observation/judgement boundary is owned by public-snapshot-boundary.ts
+    // and must be untouched by a commercial-copy change. Re-asserted here so a
+    // price edit that quietly leaked a constraint would fail in THIS suite too.
+    console.log("\n--- the observation boundary is unchanged by the price copy ---");
+    const snapshotCode = snapshotPage
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    for (const field of ["primaryConstraint", "secondaryConstraints", "howFixingItWillHelp", "verificationRequired"]) {
+      check(`the Snapshot page still never reads ${field}`, !snapshotCode.includes(field));
+    }
+    check("the handoff still calls the Snapshot observation, not diagnosis", /This is observation\. The Growth Report is diagnosis\./.test(snapshotPage));
+    check("the price copy makes no diagnostic claim", !/we (will )?(diagnose|find|identify) your (main )?constraint for R/i.test(snapshotPage));
+
+    console.log("\n--- Strategy Call is deprecated across the Astro V2 funnel ---");
+    const V2_SURFACES = [
+      "website/src/pages/index.astro",
+      "website/src/pages/snapshot.astro",
+      "website/src/pages/start.astro",
+      "website/src/components/SiteHeader.astro",
+      "website/src/components/SiteFooter.astro",
+      "website/src/layouts/BaseLayout.astro",
+      "website/src/lib/config.ts",
+      "website/src/lib/snapshot-states.ts",
+      "website/src/lib/enquiry-client.ts",
+    ];
+    for (const rel of V2_SURFACES) {
+      const src = read(rel);
+      // Comments may explain the removal; rendered output and code may not
+      // carry the link or the CTA.
+      const code = src
+        .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+        .replace(/<!--[\s\S]*?-->/g, "")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+      check(`${rel} links to no Strategy Call route`, !code.includes("strategy-call"), rel);
+      check(`${rel} renders no Strategy Call CTA`, !/strategy call/i.test(code), rel);
+    }
+    check("the STRATEGY_CALL_URL constant is gone entirely", !config.includes("STRATEGY_CALL_URL"));
+
+    const footer = read("website/src/components/SiteFooter.astro");
+    const footerLinks = [...footer.matchAll(/<li><a href=\{?([^>}]+)\}?>([^<]+)<\/a><\/li>/g)].map((m) => m[2].trim());
+    check("the footer lists exactly Growth Snapshot and Growth Report", footerLinks.join(" | ") === "Growth Snapshot | Growth Report", footerLinks.join(" | "));
+    check("...with no invented replacement item", footerLinks.length === 2, `${footerLinks.length}`);
+
+    // A universal "book a call" is the shape being deprecated, not just the
+    // words "Strategy Call". This catches a rename.
+    for (const rel of V2_SURFACES) {
+      const src = read(rel).replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/<!--[\s\S]*?-->/g, "").replace(/^\s*\/\/.*$/gm, "");
+      check(`${rel} has no book-a-call CTA under any name`, !/book a (call|consult|chat|discovery)|schedule a call|free consultation|calendly|book a meeting/i.test(src), rel);
+    }
   }
 }
 

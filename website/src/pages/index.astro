@@ -25,7 +25,7 @@
 //   3. place the Growth Report as the paid diagnosis, and the Growth Blueprint
 //      as the deeper path taken only where warranted.
 import BaseLayout from "../layouts/BaseLayout.astro";
-import { ROUTES } from "../lib/config";
+import { GROWTH_REPORT_PILOT_PRICE, ROUTES } from "../lib/config";
 ---
 
 <BaseLayout
@@ -82,7 +82,10 @@ import { ROUTES } from "../lib/config";
             it, and the order in which they should be addressed — with an Owner Report, a Practitioner
             Brief and a walkthrough.
           </p>
-          <p class="muted">Available by enquiry while DRDS works with a limited number of early clients.</p>
+          <p class="muted">
+            Controlled pilot: <strong>{GROWTH_REPORT_PILOT_PRICE}</strong>. Available by enquiry while DRDS
+            works with a limited number of early clients.
+          </p>
           <p><a href={ROUTES.start}>Start a Growth Report</a></p>
         </li>
 

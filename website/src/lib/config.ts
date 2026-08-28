@@ -71,12 +71,26 @@ export const ROUTES = {
   start: "/start/",
 } as const;
 
-/** The live WordPress Strategy Call route.
+// There is deliberately NO Strategy Call constant here.
+//
+// The generic Strategy Call is deprecated in Website V2. The approved funnel is
+// Visit — Growth Snapshot — observable evidence — Start Growth Report — short
+// qualification — human review — invoice/EFT — production, and it contains no
+// discovery-call step. The route still exists on the WordPress site and is
+// reserved for scoping conversations on qualified Blueprint engagements; it is
+// not a top-of-funnel CTA, so this site does not carry a link to it.
+//
+// Removing the constant rather than leaving it unused is the point: a dead
+// export is an invitation to paste it back into a page.
+
+/** The Growth Report controlled pilot price, in Rand.
  *
- *  It is NO LONGER the Growth Report enquiry channel: /start/ is operational and
- *  owns that flow end to end. What remains here is a general route for the two
- *  places where the enquiry form genuinely cannot serve — a visitor without
- *  JavaScript, and a visitor whose Growth Snapshot failed and who needs a person
- *  rather than a paid-Report enquiry form — plus the site footer. Referenced
- *  absolutely because it is a WordPress route, not a V2 one. */
-export const STRATEGY_CALL_URL = "https://drdigitalsystems.co.za/strategy-call/";
+ *  One value, one place. It appears on the homepage ladder, in the Snapshot
+ *  result handoff and on /start/, and those three must never be able to
+ *  disagree — a visitor who is quoted one number and shown another has been
+ *  given a reason not to trust either.
+ *
+ *  This is the CONTROLLED PILOT price while DRDS works with a limited number of
+ *  early clients. The later standard anchor is a separate decision and is not
+ *  encoded here, because it is not what anyone is being offered today. */
+export const GROWTH_REPORT_PILOT_PRICE = "R6,500";

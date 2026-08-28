@@ -17,6 +17,7 @@
 // paid for, so asking the prospect to self-diagnose here would be exactly the
 // wrong shape. Every field is something DRDS cannot derive for itself.
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { GROWTH_REPORT_PILOT_PRICE } from "../lib/config";
 ---
 
 <BaseLayout
@@ -40,15 +41,44 @@ import BaseLayout from "../layouts/BaseLayout.astro";
   </section>
 
   <div class="wrap">
-    <!-- What this form is, and what it is not. Four plain facts, no hedging and
-         no scarcity: this starts a review, not a purchase and not production. -->
-    <div class="notice start-scope" data-tone="info">
-      <p class="prose">
-        This starts an enquiry, not a purchase. Nothing is charged here and no card details are taken.
-        We read every enquiry ourselves and reply by email — a Growth Report begins only once we have
-        both agreed it is the right piece of work.
+    <!-- What this costs and what happens next, before the form rather than
+         after it: a visitor should not fill in four fields to discover the
+         price. One block, not two, so the form is not pushed down a screen and
+         not competed with. No hedging, no scarcity, no urgency. -->
+    <div class="start-terms start-scope">
+      <p class="start-terms__price">
+        <span class="start-terms__eyebrow">Growth Report · controlled pilot</span>
+        <strong>{GROWTH_REPORT_PILOT_PRICE}</strong>
+      </p>
+      <p class="prose muted">
+        An Owner Report, a Practitioner Brief, and a walkthrough once it is delivered.
+      </p>
+
+      <!-- The accepted commercial sequence, stated as four steps rather than a
+           paragraph, because the order is the thing being communicated. Step 3
+           is what stops this reading as a checkout. -->
+      <ol class="start-terms__sequence">
+        <li>You send this enquiry. No payment, no card details.</li>
+        <li>We read it ourselves and reply by email.</li>
+        <li>If we both agree it is the right work, we invoice you and you pay by EFT.</li>
+        <li>Production starts once that is settled.</li>
+      </ol>
+
+      <p class="field-hint">
+        Sending this commits you to nothing, and it is not an acceptance — we take on a limited
+        number of early clients and review every enquiry before proceeding.
       </p>
     </div>
+
+    <noscript>
+      <div class="notice" data-tone="warn">
+        <p>
+          Sending this form needs JavaScript enabled — it submits directly to our system rather than
+          reloading the page. Without it the button below will not send anything, and we would rather
+          tell you that than let you type four fields into nothing.
+        </p>
+      </div>
+    </noscript>
 
     <form id="start-form" class="start-form panel stack" novalidate>
       <h2>Your details</h2>
@@ -135,7 +165,10 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         add you to a mailing list, and we send no automatic follow-up.
       </p>
 
-      <button id="start-submit" type="submit" class="button button--primary">Send enquiry</button>
+      <!-- Disabled in the markup, enabled by the script below. Without
+           JavaScript this form genuinely cannot send, so the control that
+           claims it can must not be live. -->
+      <button id="start-submit" type="submit" class="button button--primary" disabled>Send enquiry</button>
 
       <!-- One live region for the whole form: the submitting note, the failure
            message and the validation summary all land here, so a screen reader
@@ -168,6 +201,10 @@ import BaseLayout from "../layouts/BaseLayout.astro";
     const statusMessage = document.getElementById("start-status-message") as HTMLElement;
     const success = document.getElementById("start-success") as HTMLElement;
     const successMessage = document.getElementById("start-success-message") as HTMLElement;
+
+    // The script is here, so the form can genuinely send. See the disabled
+    // attribute in the markup and the <noscript> above it.
+    submit.disabled = false;
 
     const FIELDS = ["name", "email", "businessName", "businessWebsite", "context"] as const;
 
@@ -296,9 +333,55 @@ import BaseLayout from "../layouts/BaseLayout.astro";
   }
 
   .start-form,
-  #start-success {
+  #start-success,
+  .start-terms {
     max-width: 34rem;
+  }
+
+  .start-form,
+  #start-success {
     margin-block-start: 1.5rem;
+  }
+
+  /* Deliberately not a panel. The form is the panel on this page, and giving
+     the terms the same surface would set two boxes competing for the eye. A
+     single gold hairline marks it as the commercial statement and nothing
+     louder. */
+  .start-terms {
+    border-left: 3px solid var(--gold-fill);
+    padding: 0.25rem 0 0.25rem 1rem;
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .start-terms__price {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin: 0;
+  }
+
+  .start-terms__eyebrow {
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--slate);
+  }
+
+  .start-terms__price strong {
+    font-size: 1.35rem;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .start-terms__sequence {
+    margin: 0;
+    padding-inline-start: 1.15rem;
+    display: grid;
+    gap: 0.3rem;
+    font-size: 0.9rem;
+    color: var(--ink-2);
   }
 
   .start-form__field {
