@@ -52,7 +52,54 @@ Room (real pipeline milestones streamed as NDJSON — no artificial timers) →
 public Growth Snapshot → optional "Email me this Growth Snapshot" (persistence,
 never a gate). Routes: `GET /`, `POST /api/snapshot` (streams milestones +
 result), `POST /api/email` (sends via Resend; honest not-configured state
-without a key).
+without a key), `POST /api/report-enquiry` (see below).
+
+### One public price, one file
+
+`product.json` at the repository root holds the public commercial facts. Today
+that is one value:
+
+```json
+{ "growthReportPilotPrice": "R6,500" }
+```
+
+Four public surfaces state that price: the Growth Snapshot email (this service,
+via `src/product.ts`) and the website's homepage ladder, Snapshot result handoff
+and `/start/` page (via `website/src/lib/config.ts`). All four read this file, so
+a visitor cannot be quoted one number on the site and another in their email.
+
+It is DATA, deliberately owned by neither layer. `src/` and `website/` are
+separate deployments and are isolated from one another on purpose, so neither
+imports the other's source — but both may read the same JSON.
+
+Two rules about that file:
+
+- **Data only.** Vite inlines it whole into the public browser bundle, so a
+  comment or note written inside it ships to every visitor. Reasoning belongs in
+  `src/product.ts` and in the two READMEs.
+- **Never a secret.** It reaches a public static site and an email that leaves
+  the building.
+
+It is not configuration and has no environment variable. A price that varies by
+deploy is a price nobody can quote.
+
+### The Growth Report enquiry route
+
+`POST /api/report-enquiry` is the operational entry point for a Growth Report,
+called by Website V2's `/start/` page. It accepts five fields — name, email,
+business name, business website, and one optional context answer — validates
+them, and sends **one internal email to DRDS**.
+
+It is structurally incapable of the expensive things: `runPipeline` is never
+called from it, no `llm` module is reachable on its path, it reads no run log
+(so no `publicSnapshot`, `reasoningResult` or `growthSnapshot` is in scope), and
+it consults no budget and records no spend. It has its own rate-limit bucket, so
+enquiry traffic can never consume a visitor's paid Snapshot allowance.
+
+There is no database, no CRM and no lead store: the email IS the record, so a
+delivery failure is reported to the visitor as a failure rather than thanked for.
+Set `DRDS_REPORT_ENQUIRY_TO` — it has no default, and an unset value makes the
+route refuse rather than fall back to an unrelated recipient.
 
 ### The public observation boundary
 

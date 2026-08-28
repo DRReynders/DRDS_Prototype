@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { buildUnconfirmedSnapshot } from "../src/contracts/contract5-snapshot.js";
 import { renderSnapshotEmailHtml } from "../src/email.js";
 import { buildPublicSnapshot, BOUNDARY_NOTE, EMPTY_STATE } from "../src/projection/public-snapshot.js";
+import { GROWTH_REPORT_PILOT_PRICE } from "../src/product.js";
 import type {
   BusinessInput,
   ClientIdentificationPacket,
@@ -449,7 +450,30 @@ check("email places judgement with the Growth Report", /growth report .{0,80}jud
 check("email describes the Blueprint as conditional", /only where\s*a growth report shows it is warranted|only where a growth report shows it is warranted/i.test(emailText));
 check("email no longer says the paid tiers cannot be ordered", !emailText.includes("neither is available to order"));
 check("email states the ratified availability", /available by enquiry/i.test(emailText));
-check("email invents no price", !/\br\s?\d|\$\d|usd|price|pricing/i.test(emailText));
+// SUPERSEDED by Product Council. This line used to read "email invents no
+// price" and forbade any figure at all. That was right while no price was
+// ratified for this surface: an invented number was the only thing that could
+// have appeared. The controlled-pilot price is now ratified AND required here —
+// the email was the last public surface quoting nothing while three web
+// surfaces quoted it, and that silence was its own inconsistency.
+//
+// The intent is unchanged, and is exactly what the checks below still enforce:
+// no price may be INVENTED. That is now proved by identity with the single
+// shared source in product.json, rather than by absence.
+const ratifiedPrice = GROWTH_REPORT_PILOT_PRICE.toLowerCase();
+check("email states the ratified pilot price", emailText.includes(ratifiedPrice), ratifiedPrice);
+check(
+  "...exactly once, not repeated down the email",
+  emailText.split(ratifiedPrice).length - 1 === 1,
+  String(emailText.split(ratifiedPrice).length - 1)
+);
+check("...labelled as the controlled pilot", /controlled pilot/i.test(emailText));
+// Remove the one ratified figure; anything money-shaped still standing is
+// something this module invented.
+const withoutRatified = emailText.split(ratifiedPrice).join(" ");
+check("email invents no OTHER price", !/\br\s?\d|\$\d|usd\b/i.test(withoutRatified), withoutRatified.slice(0, 120));
+check("email quotes no second currency", !/\$|\busd\b|\beur\b|\bgbp\b/i.test(withoutRatified));
+check("email offers no payment", !/pay now|buy now|purchase|checkout|card number/i.test(emailText));
 
 // ─────────────────────────────────────────────────────────────────────────────
 console.log("\n=== 11. Fallback boundary: no state promises to name a constraint ===");

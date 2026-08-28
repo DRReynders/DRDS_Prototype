@@ -7,7 +7,12 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { sendSnapshotEmail, EmailNotConfiguredError } from "../email.js";
+import {
+  EmailNotConfiguredError,
+  EnquiryRecipientNotConfiguredError,
+  sendReportEnquiryEmail,
+  sendSnapshotEmail,
+} from "../email.js";
 import { loadEnv } from "../llm/client.js";
 import { findRunLogByRunId, updateRunLog } from "../logger.js";
 import { runPipeline } from "../pipeline.js";
@@ -20,6 +25,7 @@ import {
   UNAVAILABLE_MESSAGE,
 } from "./guards.js";
 import { corsConfigSummary, corsHeaders, preflightHeaders, resolveCors } from "./cors.js";
+import { isHoneypotTripped, validateReportEnquiry } from "./report-enquiry.js";
 
 const WEB_DIR = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
@@ -585,11 +591,139 @@ async function handleEmail(req: IncomingMessage, res: ServerResponse): Promise<v
   }
 }
 
+// --- Growth Report enquiry ---------------------------------------------------
+//
+//   Facts come from systems. Context comes from people. Judgement comes from
+//   consultants.
+//
+// This route is the "context from people" seam and nothing else. It takes four
+// facts DRDS cannot derive for itself plus one optional sentence, and turns them
+// into one internal email a human reads.
+//
+// What it structurally cannot do:
+//   — run the pipeline — runPipeline is never called from here;
+//   — call a model — no llm module is reachable on this path;
+//   — spend anything — no budget is read and no spend is recorded, because a
+//     form submission costs nothing and must not consume the paid Snapshot
+//     allowance that a visitor may still need;
+//   — leak judgement — it reads no run log, so `publicSnapshot`,
+//     `reasoningResult` and `growthSnapshot` are all unreachable from here.
+//
+// There is no database, no CRM and no lead store. The email IS the record, and
+// the public copy says exactly that rather than implying storage that does not
+// exist.
+
+// Its own bucket, deliberately separate from the paid `snapshot` allowance: a
+// person who has already run their four Snapshots for the hour must still be
+// able to enquire, and someone hammering this form must not be able to consume
+// anyone's paid allowance. Low volume by design — this is a controlled paid
+// pilot with a handful of early clients, not a lead-generation funnel.
+//
+// The limit is checked BEFORE the body is read, so a rejected submission spends
+// allowance too — which is the correct order (an unbounded flood of malformed
+// bodies is exactly what a limiter is for) but means the number has to leave
+// room for a person who mistypes their email twice. Ten does; five did not.
+const ENQUIRY_LIMIT_PER_HOUR = 10;
+
+// Never varies by outcome. A form that says "sent" for one address and
+// "couldn't send" for another is an enumeration oracle; there is nothing here
+// worth enumerating, and the wording stays constant regardless.
+const ENQUIRY_FAILURE_MESSAGE =
+  "We couldn't submit your enquiry just now. This is usually temporary — please try again shortly.";
+
+/** Compact, operator-facing, and deliberately incomplete: never the context
+ *  answer, never the name, never the email address, never the email body. The
+ *  website identifies the enquiry well enough to find it in the inbox. */
+function logEnquiry(event: string, detail: Record<string, unknown> = {}): void {
+  console.log("PV_ENQUIRY " + JSON.stringify({ event, ...detail }));
+}
+
+async function handleReportEnquiry(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const rate = rateLimitCheck(clientIp(req), { bucket: "enquiry", runsPerHour: ENQUIRY_LIMIT_PER_HOUR });
+  if (!rate.allowed) {
+    logEnquiry("rate_limited");
+    json(req, res, 429, {
+      state: "rate_limited",
+      message: "You've sent a few enquiries from this connection already. Please try again a little later.",
+    });
+    return;
+  }
+
+  try {
+    // `JSON.parse` happily returns null, a number or a string for a body that
+    // is valid JSON but not an object. Those are malformed submissions, not
+    // server faults, so they are normalised to an empty object here and fall
+    // through to ordinary validation rather than throwing into the 500 branch.
+    const parsed = await readBody(req);
+    const body: Record<string, unknown> =
+      parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+
+    // Honeypot. A hidden field a person never sees and never fills; a
+    // form-filling script fills everything it finds. Answered with the ordinary
+    // success shape and no email: teaching an automated submitter which field
+    // gave it away simply produces a submitter that avoids the field. The
+    // distinct log line is what makes this visible to us rather than silent.
+    if (isHoneypotTripped(body)) {
+      logEnquiry("honeypot");
+      json(req, res, 200, { state: "received", message: ENQUIRY_RECEIVED_MESSAGE });
+      return;
+    }
+
+    const validation = validateReportEnquiry(body);
+    if (!validation.ok) {
+      // Field NAMES only. The submitted values are never logged and never
+      // echoed — the messages returned are our own fixed strings.
+      logEnquiry("rejected", { fields: validation.rejected });
+      json(req, res, 400, {
+        state: "invalid",
+        message: "Please check the highlighted fields and try again.",
+        fields: validation.fields,
+      });
+      return;
+    }
+
+    const enquiry = validation.enquiry;
+    const submittedAt = new Date().toISOString();
+    logEnquiry("accepted", { website: enquiry.businessWebsite, contextChars: enquiry.context.length });
+
+    try {
+      await sendReportEnquiryEmail(enquiry, submittedAt);
+      logEnquiry("email_sent", { website: enquiry.businessWebsite, submittedAt });
+      json(req, res, 200, { state: "received", message: ENQUIRY_RECEIVED_MESSAGE });
+    } catch (err) {
+      // The email is the only record, so a delivery failure means the enquiry is
+      // genuinely lost. The visitor is told to try again rather than thanked for
+      // something that never arrived — and the operator gets the reason, which
+      // the visitor never does.
+      if (err instanceof EnquiryRecipientNotConfiguredError || err instanceof EmailNotConfiguredError) {
+        console.error("PV_ENQUIRY_NOT_CONFIGURED", err.message);
+        json(req, res, 503, { state: "unavailable", message: ENQUIRY_FAILURE_MESSAGE });
+        return;
+      }
+      console.error("PV_ENQUIRY_SEND_FAILED", err instanceof Error ? err.message : String(err));
+      logEnquiry("delivery_failed", { website: enquiry.businessWebsite });
+      json(req, res, 502, { state: "send_failed", message: ENQUIRY_FAILURE_MESSAGE });
+    }
+  } catch (err) {
+    // Malformed JSON, an oversized body, or anything genuinely unexpected. The
+    // stack goes to our console; the visitor gets the same calm sentence as
+    // every other temporary failure.
+    console.error("PV_UNEXPECTED_ENQUIRY_ERROR", err instanceof Error ? err.stack ?? err.message : String(err));
+    json(req, res, 500, { state: "error", message: ENQUIRY_FAILURE_MESSAGE });
+  }
+}
+
+// The one thing a submitter is told. It claims a review and a reply, and
+// nothing else: no response-time promise, no queue position, and explicitly no
+// suggestion that a Growth Report has started — none has.
+const ENQUIRY_RECEIVED_MESSAGE =
+  "Thank you — your enquiry is with us. We'll review it and reply by email.";
+
 // Every browser-reachable API path. Membership here is what puts a route behind
 // the exact-origin CORS allowlist and gives it a readable preflight — so a new
 // route must be added, or the site's own page could not read its responses.
 // Still an explicit list; still no wildcard anywhere.
-const API_ROUTES = new Set(["/api/snapshot", "/api/recover", "/api/email"]);
+const API_ROUTES = new Set(["/api/snapshot", "/api/recover", "/api/email", "/api/report-enquiry"]);
 
 // Exported so an offline test can bind it on an ephemeral port (PORT=0),
 // exercise the real NDJSON route end to end and close it again. Nothing in
@@ -633,6 +767,7 @@ export const server = createServer(async (req, res) => {
   if (req.method === "POST" && req.url === "/api/snapshot") return handleSnapshot(req, res);
   if (req.method === "POST" && req.url === "/api/recover") return handleRecover(req, res);
   if (req.method === "POST" && req.url === "/api/email") return handleEmail(req, res);
+  if (req.method === "POST" && req.url === "/api/report-enquiry") return handleReportEnquiry(req, res);
   res.writeHead(404, { "Content-Type": "text/plain" });
   res.end("Not found");
 });
