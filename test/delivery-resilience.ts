@@ -13,7 +13,7 @@
 // Everything here runs against a stubbed fetch, the mock provider and an
 // ephemeral local port. No request leaves the machine.
 
-import { readdirSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
@@ -38,12 +38,84 @@ process.env.DRDS_LLM_PROVIDER = "mock";
 // `PV_GUARD_CONFIG OK - daily budget: 5 USD/day. rate limit: 4/hour.`
 process.env.MAX_DAILY_COST_USD = "5.00";
 process.env.RATE_LIMIT_RUNS_PER_HOUR = "100";
-const { recoverRun, runSnapshot } = await import("../website/src/lib/snapshot-client.js");
+// ─── Two repository shapes, one honest suite ─────────────────────────────────
+//
+// This file covers two surfaces that do not live in the same place. The
+// backend/server/recovery sections need only the root project. Sections 1-4 and
+// 9 exercise the Astro client, which lives in `website/` — a SEPARATE static
+// deployment that is deliberately absent from the backend-only production
+// branch that Railway runs.
+//
+// So the client is loaded only when its source is actually present, and the
+// specifier is BUILT rather than written inline. A literal `import("../website/
+// …")` is resolved by tsc at compile time, which would make `tsc --noEmit` fail
+// on the production branch for a tree that is intentionally not there — turning
+// a clean typecheck permanently red to describe a file that is not missing but
+// unwanted. A computed specifier is resolved at runtime only, behind the guard.
+//
+// The shape depended on is declared locally instead: a structural contract
+// covering exactly what this suite exercises, not a stand-in for the real
+// module. If the client's contract ever drifts from it, the behavioural checks
+// below fail on `website-v2`, where they always run in full.
+const CLIENT_SOURCE_REL = "website/src/lib/snapshot-client.ts";
+const HAS_ASTRO_CLIENT = existsSync(join(ROOT, CLIENT_SOURCE_REL));
+
+interface ClientResult {
+  runId: string;
+  businessName?: string;
+  /** The public projection. Unexamined here — the observation boundary is
+   *  covered exhaustively by public-snapshot-boundary and the section 5/10
+   *  wire assertions below, so this suite only cares that it arrived. */
+  snapshot: unknown;
+  mockMode?: boolean;
+}
+interface ClientFailure {
+  state: string;
+  message: string;
+  offerHumanPath: boolean;
+}
+interface ClientHandlers {
+  onMilestone(label: string): void;
+  onResult(result: ClientResult): void;
+  onFailure(failure: ClientFailure): void;
+  onRunId?(runId: string): void;
+  onRecovering?(attempt: number, attempts: number): void;
+}
+type RunSnapshotFn = (url: string, handlers: ClientHandlers, signal?: AbortSignal) => Promise<void>;
+type RecoverRunFn = (runId: string, handlers: ClientHandlers, signal?: AbortSignal) => Promise<void>;
+
+// Loud rather than silent: reaching these means a guarded section ran anyway.
+const clientAbsent = (): never => {
+  throw new Error(`${CLIENT_SOURCE_REL} is not present — this section should have been skipped.`);
+};
+let runSnapshot: RunSnapshotFn = clientAbsent;
+let recoverRun: RecoverRunFn = clientAbsent;
+if (HAS_ASTRO_CLIENT) {
+  const specifier = "../" + CLIENT_SOURCE_REL.replace(/\.ts$/, ".js");
+  const client = (await import(specifier)) as { runSnapshot: RunSnapshotFn; recoverRun: RecoverRunFn };
+  runSnapshot = client.runSnapshot;
+  recoverRun = client.recoverRun;
+}
 
 let failed = 0;
 function check(name: string, cond: boolean, detail = ""): void {
   console.log(`${cond ? "PASS" : "FAIL"}  ${name}${cond || !detail ? "" : `  -> ${detail}`}`);
   if (!cond) failed++;
+}
+
+// A section that can only be exercised where the Astro client source exists.
+// Where it does not, the section is announced and SKIPPED — never counted as a
+// pass, because nothing was tested. A skip is a hole in coverage and has to
+// read like one.
+let skippedSections = 0;
+async function astroSection(title: string, body: () => Promise<void>): Promise<void> {
+  console.log(`\n=== ${title} ===`);
+  if (!HAS_ASTRO_CLIENT) {
+    skippedSections++;
+    console.log(`SKIP — Astro client source not present on backend-only branch (${CLIENT_SOURCE_REL})`);
+    return;
+  }
+  await body();
 }
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -183,8 +255,7 @@ function withInstantTimers<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-console.log("=== 1. A stream error AFTER the result must not discard it ===");
-{
+await astroSection("1. A stream error AFTER the result must not discard it", async () => {
   snapshotCalls = 0; recoverCalls = 0;
   snapshotResponder = () => streamOf([LINES.runStarted, LINES.milestone, LINES.result], true);
   const { r, handlers } = recorder();
@@ -197,10 +268,9 @@ console.log("=== 1. A stream error AFTER the result must not discard it ===");
   check("recovery was NOT attempted — nothing was missing", recoverCalls === 0, String(recoverCalls));
   check("analysis was called exactly once", snapshotCalls === 1, String(snapshotCalls));
   check("the run id was reported early", r.runIds[0] === RUN_ID);
-}
+});
 
-console.log("\n=== 2. A stream error BEFORE the result recovers the same run ===");
-{
+await astroSection("2. A stream error BEFORE the result recovers the same run", async () => {
   snapshotCalls = 0; recoverCalls = 0;
   snapshotResponder = () => streamOf([LINES.runStarted, LINES.milestone], true);
   recoverResponder = () =>
@@ -217,10 +287,9 @@ console.log("\n=== 2. A stream error BEFORE the result recovers the same run ===
   check("the visitor was told we were checking", r.recovering.length >= 1);
   check("ANALYSIS WAS NEVER CALLED AGAIN", snapshotCalls === 1, String(snapshotCalls));
   check("no failure was shown", r.failures.length === 0);
-}
+});
 
-console.log("\n=== 2b. Recovery waits while the run is still computing ===");
-{
+await astroSection("2b. Recovery waits while the run is still computing", async () => {
   snapshotCalls = 0; recoverCalls = 0;
   snapshotResponder = () => streamOf([LINES.runStarted], true);
   // Pending twice, then the finished Snapshot.
@@ -234,10 +303,9 @@ console.log("\n=== 2b. Recovery waits while the run is still computing ===");
   check("pending did not end the attempt", recoverCalls === 3, String(recoverCalls));
   check("the Snapshot was collected once ready", r.results.length === 1, JSON.stringify(r.failures));
   check("still only one analysis", snapshotCalls === 1, String(snapshotCalls));
-}
+});
 
-console.log("\n=== 3. Recovery that cannot succeed ends honestly ===");
-{
+await astroSection("3. Recovery that cannot succeed ends honestly", async () => {
   snapshotCalls = 0; recoverCalls = 0;
   snapshotResponder = () => streamOf([LINES.runStarted], true);
   recoverResponder = () =>
@@ -251,20 +319,20 @@ console.log("\n=== 3. Recovery that cannot succeed ends honestly ===");
   check("NO SECOND ANALYSIS", snapshotCalls === 1, String(snapshotCalls));
   check("the copy never says rerunning or analysing again",
     !/rerun|running again|analys\w* again|restart/i.test(r.failures[0]?.message ?? ""), r.failures[0]?.message);
-}
-{
-  snapshotCalls = 0; recoverCalls = 0;
-  snapshotResponder = () => streamOf([LINES.runStarted], true);
-  recoverResponder = () => { throw new TypeError("still unreachable"); };
-  const { r, handlers } = recorder();
-  await withInstantTimers(() => runSnapshot("https://example.test", handlers));
-  check("an unreachable service exhausts the bounded schedule", r.failures[0]?.state === "recovery_exhausted", r.failures[0]?.state);
-  check("the schedule is bounded at 7 attempts", recoverCalls === 7, String(recoverCalls));
-  check("NO SECOND ANALYSIS", snapshotCalls === 1, String(snapshotCalls));
-}
 
-console.log("\n=== 4. Heartbeats and unknown events are never terminal ===");
-{
+  {
+    snapshotCalls = 0; recoverCalls = 0;
+    snapshotResponder = () => streamOf([LINES.runStarted], true);
+    recoverResponder = () => { throw new TypeError("still unreachable"); };
+    const { r, handlers } = recorder();
+    await withInstantTimers(() => runSnapshot("https://example.test", handlers));
+    check("an unreachable service exhausts the bounded schedule", r.failures[0]?.state === "recovery_exhausted", r.failures[0]?.state);
+    check("the schedule is bounded at 7 attempts", recoverCalls === 7, String(recoverCalls));
+    check("NO SECOND ANALYSIS", snapshotCalls === 1, String(snapshotCalls));
+  }
+});
+
+await astroSection("4. Heartbeats and unknown events are never terminal", async () => {
   snapshotCalls = 0; recoverCalls = 0;
   snapshotResponder = () =>
     streamOf([LINES.runStarted, LINES.heartbeat, LINES.milestone, LINES.heartbeat, LINES.unknown, LINES.result, LINES.heartbeat], false);
@@ -276,15 +344,16 @@ console.log("\n=== 4. Heartbeats and unknown events are never terminal ===");
   check("heartbeats did not appear as progress", r.milestones.length === 1, r.milestones.join(" | "));
   check("a heartbeat AFTER the result did not replace it", r.results[0]?.runId === RUN_ID);
   check("an unknown event type did not become the answer", r.results.length === 1 && r.failures.length === 0);
-}
-{
-  // An unknown event with nothing else: it must not be mistaken for a result.
-  snapshotResponder = () => streamOf([LINES.runStarted, LINES.unknown], false);
-  const { r, handlers } = recorder();
-  await withInstantTimers(() => runSnapshot("https://example.test", handlers));
-  check("unknown-only stream reports a failure, not a fake result",
-    r.results.length === 0 && r.failures.length === 1, JSON.stringify(r));
-}
+
+  {
+    // An unknown event with nothing else: it must not be mistaken for a result.
+    snapshotResponder = () => streamOf([LINES.runStarted, LINES.unknown], false);
+    const { r, handlers } = recorder();
+    await withInstantTimers(() => runSnapshot("https://example.test", handlers));
+    check("unknown-only stream reports a failure, not a fake result",
+      r.results.length === 0 && r.failures.length === 1, JSON.stringify(r));
+  }
+});
 
 console.log("\n=== 5. Recovery route: stored run in, public projection out ===");
 {
@@ -427,8 +496,7 @@ console.log("\n=== 8. Legacy frontend parity (source seam — no bundler availab
   check("status copy never claims a rerun", !/rerun|analysing again|restarting/i.test(legacyCopy));
 }
 
-console.log("\n=== 9. Site copy for recovery states is calm and truthful ===");
-{
+await astroSection("9. Site copy for recovery states is calm and truthful", async () => {
   const states = read("website/src/lib/snapshot-states.ts");
   check("unrecoverable state exists", states.includes("unrecoverable:"));
   check("recovery_exhausted state exists", states.includes("recovery_exhausted:"));
@@ -449,7 +517,7 @@ console.log("\n=== 9. Site copy for recovery states is calm and truthful ===");
   check("stored context expires", /PENDING_MAX_AGE_MS = 30 \* 60 \* 1000/.test(astro));
   check("the Snapshot itself is never stored", !/sessionStorage\.setItem\([^)]*publicSnapshot/.test(astro));
   check("every storage access is guarded", (astro.match(/catch \{/g) ?? []).length >= 3);
-}
+});
 
 console.log("\n=== 10. Real server: NDJSON lifecycle end to end ===");
 {
@@ -609,5 +677,11 @@ globalThis.fetch = ORIGINAL_FETCH;
   check("this test left no run logs behind", readdirSync(runsDir).every((n) => !/_fixture(-fast)?\.test\.json$/.test(n)), `removed ${removed}`);
 }
 
-console.log(`\n${failed === 0 ? "ALL PASSED" : `${failed} CHECK(S) FAILED`}`);
+// A skipped section is reported next to the verdict, never folded into it: the
+// backend-only branch genuinely has less coverage than `website-v2`, and the
+// output has to say so out loud rather than read as a full green run.
+const verdict = failed === 0 ? "ALL PASSED" : `${failed} CHECK(S) FAILED`;
+console.log(
+  `\n${verdict}${skippedSections === 0 ? "" : ` — ${skippedSections} Astro client section(s) SKIPPED: ${CLIENT_SOURCE_REL} is absent on this branch, so that surface was NOT tested here`}`
+);
 process.exit(failed === 0 ? 0 : 1);
