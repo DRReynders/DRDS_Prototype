@@ -54,6 +54,35 @@ never a gate). Routes: `GET /`, `POST /api/snapshot` (streams milestones +
 result), `POST /api/email` (sends via Resend; honest not-configured state
 without a key), `POST /api/report-enquiry` (see below).
 
+### One public price, one file
+
+`product.json` at the repository root holds the public commercial facts. Today
+that is one value:
+
+```json
+{ "growthReportPilotPrice": "R6,500" }
+```
+
+Four public surfaces state that price: the Growth Snapshot email (this service,
+via `src/product.ts`) and the website's homepage ladder, Snapshot result handoff
+and `/start/` page (via `website/src/lib/config.ts`). All four read this file, so
+a visitor cannot be quoted one number on the site and another in their email.
+
+It is DATA, deliberately owned by neither layer. `src/` and `website/` are
+separate deployments and are isolated from one another on purpose, so neither
+imports the other's source — but both may read the same JSON.
+
+Two rules about that file:
+
+- **Data only.** Vite inlines it whole into the public browser bundle, so a
+  comment or note written inside it ships to every visitor. Reasoning belongs in
+  `src/product.ts` and in the two READMEs.
+- **Never a secret.** It reaches a public static site and an email that leaves
+  the building.
+
+It is not configuration and has no environment variable. A price that varies by
+deploy is a price nobody can quote.
+
 ### The Growth Report enquiry route
 
 `POST /api/report-enquiry` is the operational entry point for a Growth Report,

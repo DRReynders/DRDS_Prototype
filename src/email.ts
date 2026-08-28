@@ -11,6 +11,7 @@
 // no way to know what a constraint is.
 
 import { BOUNDARY_NOTE, EMPTY_STATE } from "./projection/public-snapshot.js";
+import { GROWTH_REPORT_PILOT_PRICE } from "./product.js";
 import type { ReportEnquiry } from "./web/report-enquiry.js";
 import type { PublicSignal, PublicSnapshot, PublicUnsettled } from "./types.js";
 
@@ -89,7 +90,13 @@ function listSection(label: string, rows: string[], emptyCopy: string): string {
 // current ladder contradicts. Availability wording now states only what is
 // ratified: the Report is open by enquiry while DRDS works with a limited
 // number of early clients, and the Blueprint is conditional on a Report showing
-// it is warranted. No price, no date, no capacity figure is invented here.
+// it is warranted.
+//
+// The price IS stated, and comes from `product.json` via src/product.ts — the
+// same file the website reads. It is never written down a second time here: a
+// visitor quoted one number on the site and another in their Snapshot email has
+// been given a reason to trust neither. No date and no capacity figure is
+// invented, and no payment is taken by this email or offered from it.
 const TIER_COPY = `
   <tr><td style="padding:8px 0 8px">
     <div style="font-family:${SANS};font-size:13px;font-weight:600;color:${SLATE};margin:0 0 12px">Where this can go next</div>
@@ -98,12 +105,19 @@ const TIER_COPY = `
       matters most is a different kind of work:
     </div>
   </td></tr>
-  <tr><td style="padding:0 0 12px">
+  <tr><td style="padding:0 0 6px">
     <div style="font-family:${SANS};font-size:14px;line-height:1.7;color:${INK}">
       <strong>Growth Report</strong> &mdash; the judgement layer. A human diagnosis of the
       constraint actually limiting your growth, the constraints connected to it, and the
       order in which they should be addressed &mdash; with an Owner Report, a Practitioner
       Brief and a walkthrough.
+    </div>
+  </td></tr>
+  <tr><td style="padding:0 0 20px">
+    <div style="font-family:${SANS};font-size:14px;line-height:1.7;color:${SLATE}">
+      Controlled pilot: <strong style="color:${INK}">${esc(
+        GROWTH_REPORT_PILOT_PRICE
+      )}</strong>. Enquiry first &mdash; nothing is charged by this email or by the enquiry form.
     </div>
   </td></tr>
   <tr><td style="padding:0 0 20px">
@@ -115,7 +129,8 @@ const TIER_COPY = `
   <tr><td style="padding:0 0 8px">
     <div style="font-family:${SANS};font-size:14px;line-height:1.7;color:${SLATE}">
       The Growth Report is available by enquiry while DRDS works with a limited number of
-      early clients. If you would like to talk it through, just reply to this email.
+      early clients. We review every enquiry before invoicing. If you would like to talk it
+      through, just reply to this email.
     </div>
   </td></tr>`;
 

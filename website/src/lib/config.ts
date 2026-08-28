@@ -85,12 +85,25 @@ export const ROUTES = {
 
 /** The Growth Report controlled pilot price, in Rand.
  *
- *  One value, one place. It appears on the homepage ladder, in the Snapshot
- *  result handoff and on /start/, and those three must never be able to
- *  disagree — a visitor who is quoted one number and shown another has been
- *  given a reason not to trust either.
+ *  One value, one place — and that place is `product.json` at the repository
+ *  root, NOT this file. It is public commercial data belonging to neither
+ *  layer: the Snapshot backend renders it into the Growth Snapshot email, and
+ *  this site renders it on the homepage ladder, in the Snapshot result handoff
+ *  and on /start/. Four public surfaces, one literal.
+ *
+ *  Read as JSON rather than imported from the backend's source. `website/` and
+ *  `src/` are separate deployments and are deliberately isolated from one
+ *  another (see website/package.json), so neither may import the other's code.
+ *  Shared DATA crosses that line safely; shared code would not.
+ *
+ *  Vite inlines that JSON file WHOLE into this browser bundle, so it holds the
+ *  datum and nothing else — a note or a comment key written inside it would be
+ *  shipped to every visitor. Documentation belongs here, not there.
  *
  *  This is the CONTROLLED PILOT price while DRDS works with a limited number of
- *  early clients. The later standard anchor is a separate decision and is not
- *  encoded here, because it is not what anyone is being offered today. */
-export const GROWTH_REPORT_PILOT_PRICE = "R6,500";
+ *  early clients. The later standard anchor is a separate commercial decision
+ *  and is deliberately not encoded anywhere, because it is not what anyone is
+ *  being offered today. */
+import productFacts from "../../../product.json";
+
+export const GROWTH_REPORT_PILOT_PRICE: string = productFacts.growthReportPilotPrice;

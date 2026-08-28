@@ -20,7 +20,7 @@
 //      submission arrives in DRDS's inbox as the literal text that was typed.
 //   4. Failures leak nothing: no stack, no provider name, no configuration.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
@@ -41,6 +41,10 @@ import {
   normaliseBusinessWebsite,
   validateReportEnquiry,
 } from "../src/web/report-enquiry.js";
+import { renderSnapshotEmailHtml } from "../src/email.js";
+import { buildPublicSnapshot } from "../src/projection/public-snapshot.js";
+import { GROWTH_REPORT_PILOT_PRICE } from "../src/product.js";
+import type { PublicSnapshot, RunLog } from "../src/types.js";
 import { resetRateLimit } from "../src/web/guards.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -663,7 +667,11 @@ console.log("\n=== 9. Frontend: the operational contract ===");
 
     console.log("\n--- price conformity: the controlled pilot price is visible ---");
     const config = read("website/src/lib/config.ts");
-    check("the price is defined once, in config", /GROWTH_REPORT_PILOT_PRICE = "R6,500"/.test(config));
+    // The site reads the SAME product.json the backend does, so this asserts
+    // the wiring rather than a duplicated literal.
+    check("the site reads the shared product facts", /from "\.\.\/\.\.\/\.\.\/product\.json"/.test(config));
+    check("...and exports the price from it", /GROWTH_REPORT_PILOT_PRICE: string = productFacts\.growthReportPilotPrice/.test(config));
+    check("...hard-coding no literal of its own", !/R\s?6[ ,.]?500/.test(config), "the website must not restate the number");
     check("/start/ shows the price", page.includes("GROWTH_REPORT_PILOT_PRICE"));
     check("...labelled as the controlled pilot", /controlled pilot/i.test(rendered));
     check("...and hard-codes no second copy of the number", !/R\s?6[ ,.]?500/.test(rendered), "the number must come from config only");
@@ -761,6 +769,120 @@ console.log("\n=== 9. Frontend: the operational contract ===");
       check(`${rel} has no book-a-call CTA under any name`, !/book a (call|consult|chat|discovery)|schedule a call|free consultation|calendly|book a meeting/i.test(src), rel);
     }
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+console.log("\n=== 10. One public price, four public surfaces ===");
+//
+// The Growth Snapshot email is a PUBLIC surface and was the last one quoting no
+// price at all, while three web surfaces quoted R6,500. A visitor shown one
+// number on the site and a different one (or none) in their email has been
+// given a reason to trust neither.
+//
+// The fix is a single literal in `product.json`, which the backend reads through
+// src/product.ts and the site reads directly. This section proves the agreement
+// rather than assuming it: it asserts against the SHARED constant, so a change
+// to product.json moves every check at once and a change to any one surface
+// fails here.
+{
+  const productJson = JSON.parse(read("product.json")) as Record<string, unknown>;
+  check("product.json defines the pilot price", typeof productJson.growthReportPilotPrice === "string");
+  check(
+    "...and src/product.ts reads exactly that",
+    GROWTH_REPORT_PILOT_PRICE === productJson.growthReportPilotPrice,
+    `${GROWTH_REPORT_PILOT_PRICE} vs ${String(productJson.growthReportPilotPrice)}`
+  );
+  check("the value is the ratified controlled-pilot price", GROWTH_REPORT_PILOT_PRICE === "R6,500", GROWTH_REPORT_PILOT_PRICE);
+
+  // Vite inlines this file WHOLE into the public browser bundle. Anything
+  // written inside it ships to every visitor, which is why an earlier draft's
+  // explanatory `$comment` key had to come out. Data only, permanently.
+  check(
+    "product.json carries data and nothing else",
+    Object.keys(productJson).length === 1,
+    Object.keys(productJson).join(", ")
+  );
+  check(
+    "...with no commentary key to leak into the public bundle",
+    !Object.keys(productJson).some((k) => /comment|note|doc|readme|_/i.test(k)),
+    Object.keys(productJson).join(", ")
+  );
+  check("...and nothing resembling a secret", !/key|token|secret|password|api/i.test(read("product.json")));
+
+  // The backend must not hard-code a second copy. `src/product.ts` is the only
+  // module allowed to name the file; nothing else may name the number.
+  for (const rel of ["src/email.ts", "src/web/server.ts", "src/web/report-enquiry.ts"]) {
+    check(`${rel} hard-codes no price of its own`, !/R\s?6[ ,.]?500/.test(read(rel)), rel);
+  }
+  check("src/product.ts is the single backend reader of product.json", read("src/email.ts").includes('from "./product.js"'));
+
+  console.log("\n--- the Snapshot email states the price ---");
+  // Rendered from a REAL projection, replayed from a preserved run log exactly
+  // the way public-projection-replay.ts does. Deterministic, offline and free:
+  // the builder reads Contracts 0-3 only and structurally cannot reach a
+  // ReasoningResult, so no model call and no network are involved.
+  const RUNS = join(ROOT, "runs");
+  let projection: PublicSnapshot | null = null;
+  for (const name of readdirSync(RUNS).filter((f) => f.endsWith(".json") && !f.startsWith("spend-")).sort()) {
+    let log: RunLog;
+    try {
+      log = JSON.parse(readFileSync(join(RUNS, name), "utf8")) as RunLog;
+    } catch {
+      continue; // unreadable file — skipped, never guessed at
+    }
+    if (!log.cip || !log.evidencePackage?.entries?.length || !log.input) continue;
+    projection = buildPublicSnapshot({
+      input: log.input,
+      cip: log.cip,
+      evidence: log.evidencePackage,
+      pagesFetched: log.pagesFetched ?? [],
+      robots: log.robots,
+    });
+    break;
+  }
+  check("a preserved run was available to replay", projection !== null);
+  const emailHtml = projection ? renderSnapshotEmailHtml("Acme Plumbing", projection) : "";
+
+  // The template wraps prose across source lines, so "Practitioner Brief" is
+  // one phrase to a reader and two to a regex. Every prose assertion below runs
+  // against whitespace-normalised text; the exact-value ones use the raw HTML.
+  const emailText = emailHtml.replace(/\s+/g, " ");
+  check("the Growth Report handoff is still present", emailText.includes("Where this can go next"));
+  check("...still describing the Report as the judgement layer", /judgement layer/i.test(emailText));
+  check("...still naming the Owner Report", /Owner Report/i.test(emailText));
+  check("...the Practitioner Brief", /Practitioner Brief/i.test(emailText));
+  check("...and the walkthrough", /walkthrough/i.test(emailText));
+  check("the email now states the pilot price", emailHtml.includes(GROWTH_REPORT_PILOT_PRICE), GROWTH_REPORT_PILOT_PRICE);
+  check("...labelled as the controlled pilot", /controlled pilot/i.test(emailText));
+  check("...exactly once, not repeated down the email", (emailHtml.match(/R6,500/g) ?? []).length === 1, `${(emailHtml.match(/R6,500/g) ?? []).length}`);
+  check("...and stated as enquiry-first", /enquiry first/i.test(emailText));
+  check("...with review before invoicing", /review every enquiry before invoicing/i.test(emailText));
+
+  console.log("\n--- the email takes no payment and offers none ---");
+  check("no payment is claimed or offered", !/pay now|buy now|purchase|checkout|add to cart|card number|cvv/i.test(emailHtml));
+  check("no payment provider is named", !/payfast|stripe|paypal|yoco|snapscan|ozow/i.test(emailHtml));
+  check("nothing is charged by the email", /nothing is charged/i.test(emailText));
+  check("the Blueprint stays conditional", /only where[\s\S]{0,80}warranted/i.test(emailText));
+  check("...and is never the default next step", /never the default next step/i.test(emailText));
+  check("no scarcity or urgency around the price", !/hurry|act now|limited time|only \d+ (spots|places|slots|left)|ends (soon|today)/i.test(emailHtml));
+  check("no response time is promised", !/within \d+ (hour|business day|day)/i.test(emailHtml));
+
+  console.log("\n--- the observation boundary survives the commercial copy ---");
+  // The email renders the PUBLIC projection. Adding a price must not have
+  // opened a route for judgement to reach it. public-snapshot-boundary.ts owns
+  // this contract; it is re-asserted here so a commercial edit that leaked a
+  // constraint fails in THIS suite too.
+  for (const field of ["primaryConstraint", "secondaryConstraints", "howFixingItWillHelp", "whatIsGoingWell", "verificationRequired", "hypothesisConfidence", "constraintSafety", "reasoningNotes"]) {
+    check(`the email module never reads ${field}`, !read("src/email.ts").includes(field), field);
+  }
+  const emailCode = read("src/email.ts").replace(/^\s*\/\/.*$/gm, "");
+  check("the email module cannot import a GrowthSnapshot", !/GrowthSnapshot|ReasoningResult/.test(emailCode));
+  check("the rendered email makes no 'single biggest' claim", !/single biggest|biggest growth constraint/i.test(emailHtml));
+  check("...and claims no diagnosis for the free tier", !/we diagnose (your|the) (main )?constraint/i.test(emailHtml));
+  check("...still saying the Snapshot only states what pages show", /states what your public pages show/i.test(emailText));
+  check("no mailing-list machinery appeared alongside the price", !/unsubscribe|newsletter|manage preferences|opt.?in|subscribe to/i.test(emailText));
+  check("the email still says there is no list and no account", /no mailing list and no account/i.test(emailText));
+  check("no provider or vendor is named in the email", !/anthropic|openai|claude|gpt-|resend/i.test(emailHtml));
 }
 
 setEmailTransport(null);

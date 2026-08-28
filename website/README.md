@@ -127,6 +127,23 @@ state — three places where the enquiry form genuinely cannot serve, because
 either JavaScript is unavailable or the visitor needs a person rather than a
 paid-Report enquiry form.
 
+## The Growth Report pilot price
+
+The controlled-pilot price appears on three pages of this site — the homepage
+ladder, the `/snapshot/` result handoff, and `/start/`. None of them writes the
+number down. All three read `GROWTH_REPORT_PILOT_PRICE` from `src/lib/config.ts`,
+which reads `product.json` at the REPOSITORY ROOT — the same file the Snapshot
+backend reads when it renders the Growth Snapshot email.
+
+That is four public surfaces and one literal, which is the point: a visitor
+quoted one number here and a different one in their email has been given a reason
+to trust neither.
+
+`product.json` holds data and nothing else. Vite inlines it whole into the
+browser bundle, so anything written inside it — including a comment key — is
+shipped to every visitor. Nothing secret may go in it, and the reasoning lives in
+this README and in `src/product.ts` on the backend side.
+
 ## The Growth Report enquiry (`/start/`)
 
 `/start/` posts five fields — name, email, business name, business website and
