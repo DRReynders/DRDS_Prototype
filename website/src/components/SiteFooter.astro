@@ -18,9 +18,17 @@ const year = new Date().getFullYear();
       </ul>
     </nav>
 
+    {/* The trading-identity statement, carried forward from the WordPress
+        /about/ page rather than invented here: that page is the only public
+        surface that currently says which registered entity stands behind the
+        name, and /about/ redirects to `/` at cutover. Two short lines is the
+        whole of it — no address, no phone, no founder biography, no company
+        story. A visitor who wants to know who they would be contracting with
+        can find out; nobody else has to read past it. */}
     <p class="site-footer__legal">
-      © {year} DR Digital Systems (Pty) Ltd. Registered in South Africa.
+      DRDS is the trading identity of DR Digital Systems (Pty) Ltd. Registered in South Africa.
     </p>
+    <p class="site-footer__copyright">© {year} DR Digital Systems (Pty) Ltd.</p>
   </div>
 </footer>
 
@@ -58,5 +66,14 @@ const year = new Date().getFullYear();
     font-size: 0.82rem;
     color: var(--slate);
     margin: 0;
+  }
+
+  /* Quieter than the identity line above it and set on the same scale, so the
+     pair reads as one small block of fine print rather than as two competing
+     statements. Nothing here is a heading and nothing here is a link. */
+  .site-footer__copyright {
+    font-size: 0.78rem;
+    color: var(--slate);
+    margin: 0.35rem 0 0;
   }
 </style>

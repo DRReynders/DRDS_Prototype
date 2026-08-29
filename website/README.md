@@ -1,7 +1,16 @@
 # DRDS Website V2 — Astro static-first foundation
 
-Phase 1 foundation only. Not launched, not deployed, not cut over. The existing
-WordPress site at `drdigitalsystems.co.za` remains live and untouched.
+**Status.** Both operating flows — the public Growth Snapshot and the Growth
+Report enquiry — are live-verified against production. The site is deployed to
+the private staging host `https://v2.drdigitalsystems.co.za` (password-protected,
+`noindex`, `Disallow: /`).
+
+**Production cutover has NOT happened.** The existing WordPress site at
+`drdigitalsystems.co.za` remains live and untouched, and the apex is not yet an
+allowed browser origin on the Snapshot API — see
+[Browser origin boundary (CORS)](#browser-origin-boundary-cors) below, which is a
+hard prerequisite, not a formality. The host configuration for the eventual
+cutover is tracked at `deployment/website-production/`.
 
 ## What this is
 
@@ -79,7 +88,19 @@ indexed, and the eventual production launch must never inherit that.
 | `/` | indexable | `noindex, nofollow` |
 | `/snapshot/` | indexable | `noindex, nofollow` |
 | `/start/` | `noindex, follow` | `noindex, nofollow` |
-| `robots.txt` | `Allow: /` | `Disallow: /` |
+| `robots.txt` | `Allow: /`, no `Sitemap:` | `Disallow: /` |
+
+`/start/` is `noindex, follow` in production on purpose, and this is ratified:
+it is a conversion endpoint reached through the funnel, not a search-acquisition
+page. `follow` rather than `nofollow` so it still passes link equity onward.
+
+Production `robots.txt` advertises **no sitemap**. It used to name
+`https://drdigitalsystems.co.za/sitemap.xml` — a URL the WordPress site serves
+and this site does not emit, so at cutover that line would have pointed a crawler
+at a 404. Three public URLs, one of them `noindex`, all one click from the
+homepage, do not justify a sitemap or the integration that would generate one.
+If that ever changes, generate the sitemap and restore the line in the same
+change; never restore the line alone.
 
 Two mechanisms, both build-time, no JavaScript and no server:
 
@@ -112,20 +133,42 @@ Directory Privacy. Neither replaces the other.
 | Route | Output | Status |
 |---|---|---|
 | `/` | `dist/index.html` | Shell. Placeholder copy. |
-| `/snapshot/` | `dist/snapshot/index.html` | Full state structure. Calls the live API. |
+| `/snapshot/` | `dist/snapshot/index.html` | **Operational.** Full state structure; calls the live API. Stage 1.2 delivery resilience is live: early `runId`, heartbeat, terminal-result preservation, retry-of-delivery-not-computation, `/api/recover`, disconnect resilience. |
 | `/start/` | `dist/start/index.html` | **Operational** Growth Report enquiry. POSTs to `/api/report-enquiry`. `noindex`. |
 | `robots.txt` | `dist/robots.txt` | Generated from `PUBLIC_SITE_ENV`. See above. |
 
 `build.format: "directory"` plus `trailingSlash: "always"` means conventional
 static hosting serves these as directory URLs with no rewrite rules.
 
-The live WordPress **Strategy Call** route is not replaced or redirected by this
-site, but it is no longer part of the Growth Report flow: `/start/` is
-operational and owns that funnel end to end. Strategy Call remains linked in the
-footer, in the `/snapshot/` `<noscript>` block and in the `/snapshot/` failure
-state — three places where the enquiry form genuinely cannot serve, because
-either JavaScript is unavailable or the visitor needs a person rather than a
-paid-Report enquiry form.
+The generic **Strategy Call is deprecated and this site does not link to it
+anywhere** — not in the footer, not in the `/snapshot/` `<noscript>` block, not
+in the `/snapshot/` failure state, and there is no route constant for it in
+`src/lib/config.ts`. `/start/` is operational and owns the Growth Report funnel
+end to end. The live WordPress `/strategy-call/` route still exists today; at
+cutover it 301s to `/start/` (see `deployment/website-production/.htaccess`).
+
+`test/website-production-posture.ts` asserts that absence against the source of
+every page and component, because prose in this file was wrong about it once
+already.
+
+## Production cutover
+
+Not done, and not started from this directory. The host configuration for the
+apex — the `.htaccess` carrying the canonical `www` → apex and `http` → `https`
+redirects and the nine ratified legacy WordPress redirects — is tracked at:
+
+```
+deployment/website-production/
+```
+
+That directory's README also carries the apex CORS prerequisite and the rollback
+doctrine (**archive/move WordPress first; never overwrite or delete the existing
+production site as the first operation**). Read it before touching the apex.
+
+The `.htaccess` deliberately does **not** live in `website/public/`: everything
+there is copied verbatim into every build, so a staging upload would carry it to
+`v2.drdigitalsystems.co.za` and overwrite the cPanel-managed `.htaccess` that
+host relies on for Directory Privacy.
 
 ## The Growth Report pilot price
 
@@ -169,22 +212,39 @@ happened to be configured for something else.
 
 ## Browser origin boundary (CORS)
 
-The backend now has an explicit-origin CORS boundary (`src/web/cors.ts`), added
-in Website V2 Phase 2 **on this branch**. It is not yet deployed: production
-still runs the pre-boundary build, so `/snapshot/` pointed at production will
-still show the honest "temporarily unavailable" state until that ships.
+The backend's explicit-origin CORS boundary (`src/web/cors.ts`) is **deployed and
+live**. Exact origins only. No wildcard, no subdomain matching, and an unset
+value allows no browser origin at all — it fails closed. Requests with no
+`Origin` header (CLI, direct API inspection) are unaffected and need no entry.
 
-For the boundary to permit this site, the backend needs its own environment
-variable set — see the repository-root `.env.example`:
+Verified live by preflight on 2026-08-29, two origins are allowed today:
+
+```
+https://drdsprototype-production.up.railway.app
+https://v2.drdigitalsystems.co.za
+```
+
+### ⚠️ The apex is NOT yet allowed — hard cutover prerequisite
+
+`https://drdigitalsystems.co.za` currently receives **403** on preflight. Deploy
+this site to the apex before `SNAPSHOT_ALLOWED_ORIGINS` is updated and the Growth
+Snapshot and the Growth Report enquiry both fail on every attempt — invisibly, in
+a Railway environment variable rather than in anything here. Ratified target set:
+
+```
+SNAPSHOT_ALLOWED_ORIGINS=https://drdsprototype-production.up.railway.app,https://v2.drdigitalsystems.co.za,https://drdigitalsystems.co.za
+```
+
+`https://www.drdigitalsystems.co.za` is deliberately excluded: `www` 301s to the
+apex before any JavaScript executes, so it never needs to be an API origin, and
+adding it would sanction a second canonical frontend origin. Full detail and the
+zero-cost verification command are in `deployment/website-production/README.md`.
+
+For local development the value is the dev server's own origin:
 
 ```
 SNAPSHOT_ALLOWED_ORIGINS=http://localhost:4321        # local Astro dev
-SNAPSHOT_ALLOWED_ORIGINS=https://drdigitalsystems.co.za   # production site
 ```
-
-Exact origins only. No wildcard, and an unset value allows no browser origin at
-all — it fails closed. Requests with no `Origin` header (CLI, direct API
-inspection) are unaffected and need no entry.
 
 To run the two locally: start the backend with `SNAPSHOT_ALLOWED_ORIGINS`
 including `http://localhost:4321`, set `PUBLIC_SNAPSHOT_API_ORIGIN` here to
@@ -197,7 +257,11 @@ is fully rendered HTML before it runs and every state container already exists i
 the document. It earns its place because the Snapshot is a 1–2 minute streamed
 job and the approved architecture has no server runtime to proxy that stream.
 
-`/start/` has a small script whose only job is to *prevent* submission and say so.
+`/start/` has a second, smaller script. It is operational: it validates the five
+fields, POSTs the enquiry, guards against a double submit, and replaces the form
+with the outcome. The submit button ships `disabled` and that script is what
+enables it, so a visitor without JavaScript is told the form cannot send rather
+than being given a control that silently does nothing.
 
 `/` ships no JavaScript at all.
 

@@ -20,15 +20,23 @@ User-agent: *
 Disallow: /
 `;
 
-// Unchanged from the previous static file, so a production build emits exactly
-// what it emitted before this staging work existed.
-const PRODUCTION = `# DRDS Website V2 — foundation scaffold.
-# This file ships with the static build. It is NOT live: the production robots
-# policy is still served by the existing WordPress site and is unaffected.
+// The production policy: allow crawling, and say nothing else.
+//
+// There is deliberately NO `Sitemap:` directive. This file used to advertise
+// https://drdigitalsystems.co.za/sitemap.xml, which the WordPress site serves
+// today (as a 301 to Rank Math's sitemap index) and which Website V2 does not
+// emit at all — so at cutover that line would have pointed a crawler at a 404.
+//
+// Product Council ratified removing the line rather than generating a sitemap:
+// this site has three public URLs, one of them `noindex`, all of them reachable
+// in one click from the homepage. A sitemap discovers nothing a crawler would
+// miss, and installing an SEO integration to produce one is platform work the
+// site has not earned. If the site ever grows past what a crawler can walk
+// unaided, generate a real sitemap and restore this line in the same change —
+// never restore the line on its own.
+const PRODUCTION = `# DRDS Website V2.
 User-agent: *
 Allow: /
-
-Sitemap: https://drdigitalsystems.co.za/sitemap.xml
 `;
 
 export const GET: APIRoute = () => {

@@ -1,0 +1,127 @@
+# DRDS Website V2 — PRODUCTION host configuration for drdigitalsystems.co.za
+#
+# This file belongs in the apex document root, alongside the Astro static build.
+# It is tracked here, in the repository, because it is production configuration
+# and not a build artefact: nothing in `website/` emits it, `npm run build` never
+# produces it, and a deploy that forgets it is a deploy that silently loses every
+# canonical redirect below.
+#
+# It is deliberately NOT placed inside `website/public/`. Anything in `public/`
+# is copied verbatim into EVERY build, so a staging upload would carry this file
+# to v2.drdigitalsystems.co.za and overwrite the cPanel-managed .htaccess that
+# host relies on for its Directory Privacy. Staging must keep its own. This file
+# is copied into the apex document root by hand, once, at cutover.
+#
+# ─────────────────────────────────────────────────────────────
+# WHAT THIS FILE IS FOR, AND WHAT IT DELIBERATELY IS NOT
+#
+# Website V2 is a static site. Every route is a plain HTML file already sitting
+# at the path it is served from, so there is no application rewrite to write and
+# none is written here. This file does exactly four things:
+#
+#   1. refuses directory listings;
+#   2. names index.html as the directory index;
+#   3. canonicalises every request onto https://drdigitalsystems.co.za;
+#   4. redirects the nine legacy WordPress URLs that Website V2 absorbs.
+#
+# It contains NO WordPress rewrite block, NO PHP handler, NO reverse proxy, NO
+# rewrite for /api/ or the Growth Snapshot (the browser calls Railway directly,
+# cross-origin by design — see the CORS note in README.md beside this file), and
+# NO caching, compression or other speculative performance directives. Those are
+# not free: each one is a behaviour someone has to debug later, and none of them
+# is needed to serve four files correctly.
+#
+# ─────────────────────────────────────────────────────────────
+# HOP BEHAVIOUR — stated accurately, because "one hop" is easy to claim and easy
+# to get wrong.
+#
+# The legacy redirects are listed BEFORE the origin canonicalisation and target
+# ABSOLUTE canonical URLs. That ordering is the whole reason the worst case is
+# one hop rather than two: a request for http://www.drdigitalsystems.co.za/growth-audit/
+# is rewritten straight to https://drdigitalsystems.co.za/snapshot/ instead of
+# being canonicalised to the apex first and redirected again afterwards.
+#
+#   http://drdigitalsystems.co.za/              -> 1 hop  -> https://drdigitalsystems.co.za/
+#   https://www.drdigitalsystems.co.za/snapshot/-> 1 hop  -> https://drdigitalsystems.co.za/snapshot/
+#   http://www.drdigitalsystems.co.za/          -> 1 hop  -> https://drdigitalsystems.co.za/
+#   https://drdigitalsystems.co.za/growth-audit/-> 1 hop  -> https://drdigitalsystems.co.za/snapshot/
+#   http://www.drdigitalsystems.co.za/growth-audit/ -> 1 hop -> https://drdigitalsystems.co.za/snapshot/
+#   https://drdigitalsystems.co.za/snapshot/    -> 0 hops -> 200
+#
+# No rule can loop: every legacy target (/, /snapshot/, /start/) is itself an
+# already-canonical https apex URL and is never a legacy SOURCE, so the second
+# request matches nothing and is served from disk.
+
+# Never expose a directory listing. The build emits /_astro/ full of hashed
+# assets; that directory has an obvious URL and no index file.
+#
+# If the host ever answers 500 after this file is placed, THIS is the first line
+# to suspect: it requires AllowOverride Options, which cPanel grants by default
+# but a hardened vhost may not.
+Options -Indexes
+
+# Astro is built with `build.format: "directory"`, so /snapshot/ is really
+# /snapshot/index.html. Stated explicitly rather than inherited: the previous
+# occupant of this document root was PHP, and the server default may still list
+# index.php ahead of index.html.
+DirectoryIndex index.html
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # ── 1. Legacy WordPress URLs that Website V2 absorbs ──────────────────
+  #
+  # Ratified migration map. Each target is the surface that now does the job,
+  # not a rebuilt copy of the old page:
+  #
+  #   /growth-audit/  the Complimentary Growth Audit is the Growth Snapshot now
+  #   /strategy-call/ the deprecated discovery call; /start/ owns this funnel
+  #   /services/      the homepage ladder states the offer better
+  #   /method/        doctrine; preserved as reference material, not rebuilt
+  #   /framework/     doctrine; preserved as reference material, not rebuilt
+  #   /about/         the entity statement now lives in the site footer
+  #   /case-studies/ + the "Coming Q3 2026" post + its category archive —
+  #                   an unfulfilled promise that is retired on purpose
+  #
+  # 301 rather than 410 throughout: none of this is harmful-if-found, and a
+  # permanent redirect keeps whatever link equity these URLs hold.
+  #
+  # WordPress plumbing (/wp-admin/, /wp-login.php, /wp-json/, /feed/, /author/…,
+  # /?s=, /xmlrpc.php) is deliberately absent. It disappears with WordPress and
+  # 404s honestly. Redirecting it would be pretending it moved somewhere.
+  #
+  # The optional trailing slash in each pattern catches the unslashed variant
+  # without a second rule or a second redirect.
+  RewriteRule ^growth-audit/?$              https://drdigitalsystems.co.za/snapshot/ [R=301,L]
+  RewriteRule ^strategy-call/?$             https://drdigitalsystems.co.za/start/ [R=301,L]
+  RewriteRule ^services/?$                  https://drdigitalsystems.co.za/ [R=301,L]
+  RewriteRule ^method/?$                    https://drdigitalsystems.co.za/ [R=301,L]
+  RewriteRule ^framework/?$                 https://drdigitalsystems.co.za/ [R=301,L]
+  RewriteRule ^about/?$                     https://drdigitalsystems.co.za/ [R=301,L]
+  RewriteRule ^case-studies/?$              https://drdigitalsystems.co.za/ [R=301,L]
+  RewriteRule ^case-studies-coming-q3-2026/?$ https://drdigitalsystems.co.za/ [R=301,L]
+  RewriteRule ^category/announcements/?$    https://drdigitalsystems.co.za/ [R=301,L]
+
+  # ── 2. One canonical origin: https://drdigitalsystems.co.za ───────────
+  #
+  # HTTPS and www are handled by a single rule with an [OR] condition, so a
+  # request that is wrong on both counts is corrected in ONE redirect.
+  #
+  # HTTPS is enforced explicitly rather than inherited. The pre-cutover site
+  # did redirect http to https, but that redirect's configuration source was
+  # never proven — it may live in the vhost, or it may have lived in the
+  # WordPress .htaccess this file replaces. Relying on it would be relying on
+  # something we cannot see.
+  #
+  # www is not, and must not become, a second live frontend origin. The Snapshot
+  # API's CORS allowlist is exact-origin and will contain the apex only, so a
+  # visitor served the site from www would get a page whose Growth Snapshot and
+  # Growth Report enquiry are both refused by the browser. This redirect is what
+  # guarantees no application JavaScript ever executes on the www host.
+  #
+  # %{REQUEST_URI} preserves the full path; mod_rewrite reattaches the query
+  # string automatically because the substitution contains no "?" of its own.
+  RewriteCond %{HTTPS} !=on [OR]
+  RewriteCond %{HTTP_HOST} ^www\. [NC]
+  RewriteRule ^ https://drdigitalsystems.co.za%{REQUEST_URI} [R=301,L]
+</IfModule>
